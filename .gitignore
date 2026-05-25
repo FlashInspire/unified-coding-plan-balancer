@@ -45,3 +45,4 @@ next-env.d.ts
 # unified-coding-plan-balancer: runtime data (config + metrics sqlite shards)
 /data
 
+!.env.example
