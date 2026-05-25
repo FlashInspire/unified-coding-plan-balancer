@@ -1,0 +1,135 @@
+// unified-coding-plan-balancer — Prisma schema
+// See DESIGN.md §3.1 for the data model rationale.
+// SQLite provider: no enums (use String + app-layer union types), Json stored as TEXT.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// -----------------------------------------------------------------------------
+// Model — logical model / shared defaults. Model.id is the public model_id.
+// -----------------------------------------------------------------------------
+model Model {
+  id                        String   @id // public model_id, e.g. "gpt-4o"
+  displayName               String
+  contextLength             Int
+  maxTokens                 Int
+  temperature               Float?
+  topP                      Float?
+  topK                      Int?
+  reasoningEffort           String? // "low" | "medium" | "high" | null
+  includeReasoningInRequest Boolean  @default(false)
+  enabled                   Boolean  @default(true)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  providerModels ProviderModel[]
+}
+
+// -----------------------------------------------------------------------------
+// Provider — upstream service vendor (OpenAI, Azure, OpenRouter, etc.).
+// Each provider can expose both OpenAI-compatible and Anthropic-compatible
+// endpoints. baseUrlOpenai / apiKeyOpenai and baseUrlAnthropic / apiKeyAnthropic
+// are both optional; at least one pair must be configured.
+// -----------------------------------------------------------------------------
+model Provider {
+  id                  String    @id // e.g. "openai-official", "azure-eu"
+  name                String
+  baseUrlOpenai       String? // OpenAI-compatible endpoint URL
+  apiKeyOpenai        String? // API key for OpenAI endpoint (plaintext; admin-only access)
+  baseUrlAnthropic    String? // Anthropic-compatible endpoint URL
+  apiKeyAnthropic     String? // API key for Anthropic endpoint
+  headersTemplate     String // JSON-encoded extra headers template
+  rollingQuota        Int?
+  weekQuota           Int?
+  monthQuota          Int?
+  rollingQuotaUsed    Float     @default(0.0)
+  weekQuotaUsed       Float     @default(0.0)
+  monthQuotaUsed      Float     @default(0.0)
+  rollingQuotaResetAt DateTime?
+  weekQuotaResetAt    DateTime?
+  monthQuotaResetAt   DateTime?
+  rollingQuotaCron    String?   @default("0 */5 * * *")
+  weekQuotaCron       String?   @default("0 0 * * 1")
+  monthQuotaCron      String?   @default("0 0 1 * *")
+  enabled             Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  providerModels ProviderModel[]
+  quotaSnapshot  ProviderQuotaSnapshot?
+}
+
+// -----------------------------------------------------------------------------
+// ProviderModel — instance of a Model on a specific Provider, with overrides.
+// -----------------------------------------------------------------------------
+model ProviderModel {
+  id          String @id @default(cuid())
+  modelId     String
+  providerId  String
+  realModelId String // upstream's true model id
+
+  // All overrides are optional; NULL inherits from Model.
+  contextLengthOverride             Int?
+  maxTokensOverride                 Int?
+  temperatureOverride               Float?
+  topPOverride                      Float?
+  topKOverride                      Int?
+  reasoningEffortOverride           String?
+  includeReasoningInRequestOverride Boolean?
+
+  // Routing weight for ties in remaining quota.
+  weight  Int     @default(1)
+  feeRate Float   @default(1.0)
+  enabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  model    Model    @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([modelId, providerId])
+  @@index([modelId])
+  @@index([providerId])
+}
+
+// -----------------------------------------------------------------------------
+// ApiKey — externally issued bearer tokens. Plaintext returned only on create.
+// Prefix is always "sk-y6-"; the full key = "sk-y6-" + randomPart.
+// -----------------------------------------------------------------------------
+model ApiKey {
+  id         String    @id @default(cuid())
+  keyHash    String    @unique // SHA-256 hex of plaintext key
+  name       String
+  enabled    Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+}
+
+// -----------------------------------------------------------------------------
+// AdminUser — admin console accounts (bcrypt-hashed password).
+// -----------------------------------------------------------------------------
+model AdminUser {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
+
+// -----------------------------------------------------------------------------
+// ProviderQuotaSnapshot — cached remaining quota, refreshed by background worker.
+// Router reads this table; never hits upstream quota APIs on the request path.
+// -----------------------------------------------------------------------------
+model ProviderQuotaSnapshot {
+  providerId   String   @id
+  usagePercent Float? // 0–100; lower = more remaining; null = unknown
+  fetchedAt    DateTime
+  healthy      Boolean  @default(true)
+
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+}
