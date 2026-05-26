@@ -132,38 +132,45 @@ async function tick(): Promise<void> {
     providers.map((p) => {
       const updates: Record<string, unknown> = {};
 
-      // Rolling
-      if (
-        p.rollingQuota != null &&
-        p.rollingQuotaResetAt &&
-        p.rollingQuotaResetAt.getTime() <= nowTime
-      ) {
-        updates.rollingQuotaUsed = 0;
-        updates.rollingQuotaResetAt = computeNextResetAt(
-          "rolling",
-          now,
-          p.rollingHourOffset,
-        );
+      // Rolling — reset if past due, or backfill if resetAt is missing
+      if (p.rollingQuota != null) {
+        if (
+          p.rollingQuotaResetAt &&
+          p.rollingQuotaResetAt.getTime() <= nowTime
+        ) {
+          updates.rollingQuotaUsed = 0;
+          updates.rollingQuotaResetAt = computeNextResetAt(
+            "rolling",
+            now,
+            p.rollingHourOffset,
+          );
+        } else if (!p.rollingQuotaResetAt) {
+          updates.rollingQuotaResetAt = computeNextResetAt(
+            "rolling",
+            now,
+            p.rollingHourOffset,
+          );
+        }
       }
 
-      // Weekly
-      if (
-        p.weekQuota != null &&
-        p.weekQuotaResetAt &&
-        p.weekQuotaResetAt.getTime() <= nowTime
-      ) {
-        updates.weekQuotaUsed = 0;
-        updates.weekQuotaResetAt = computeNextResetAt("week", now);
+      // Weekly — reset if past due, or backfill if resetAt is missing
+      if (p.weekQuota != null) {
+        if (p.weekQuotaResetAt && p.weekQuotaResetAt.getTime() <= nowTime) {
+          updates.weekQuotaUsed = 0;
+          updates.weekQuotaResetAt = computeNextResetAt("week", now);
+        } else if (!p.weekQuotaResetAt) {
+          updates.weekQuotaResetAt = computeNextResetAt("week", now);
+        }
       }
 
-      // Monthly
-      if (
-        p.monthQuota != null &&
-        p.monthQuotaResetAt &&
-        p.monthQuotaResetAt.getTime() <= nowTime
-      ) {
-        updates.monthQuotaUsed = 0;
-        updates.monthQuotaResetAt = computeNextResetAt("month", now);
+      // Monthly — reset if past due, or backfill if resetAt is missing
+      if (p.monthQuota != null) {
+        if (p.monthQuotaResetAt && p.monthQuotaResetAt.getTime() <= nowTime) {
+          updates.monthQuotaUsed = 0;
+          updates.monthQuotaResetAt = computeNextResetAt("month", now);
+        } else if (!p.monthQuotaResetAt) {
+          updates.monthQuotaResetAt = computeNextResetAt("month", now);
+        }
       }
 
       if (Object.keys(updates).length === 0) return Promise.resolve();
