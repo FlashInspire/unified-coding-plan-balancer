@@ -15,17 +15,17 @@ describe("computeQuotaUsagePercent", () => {
     expect(usage).toBeNull();
   });
 
-  it("treats zero quota as exhausted", () => {
+  it("treats zero quota as unlimited (same as null)", () => {
     const usage = computeQuotaUsagePercent({
       rollingQuota: 0,
-      rollingQuotaUsed: 0,
+      rollingQuotaUsed: 10,
       weekQuota: null,
       weekQuotaUsed: 0,
       monthQuota: null,
       monthQuotaUsed: 0,
     });
 
-    expect(usage).toBe(100);
+    expect(usage).toBeNull();
   });
 
   it("uses the tightest remaining quota dimension", () => {
@@ -66,5 +66,19 @@ describe("computeQuotaUsagePercent", () => {
     });
 
     expect(usage).toBe(25);
+  });
+
+  it("ignores zero quotas alongside real quotas", () => {
+    const usage = computeQuotaUsagePercent({
+      rollingQuota: 0,
+      rollingQuotaUsed: 999,
+      weekQuota: 100,
+      weekQuotaUsed: 40,
+      monthQuota: 0,
+      monthQuotaUsed: 500,
+    });
+
+    // Only weekQuota matters: 40%
+    expect(usage).toBe(40);
   });
 });

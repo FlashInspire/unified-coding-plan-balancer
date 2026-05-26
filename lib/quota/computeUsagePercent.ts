@@ -12,7 +12,7 @@ export interface QuotaUsageInput {
  *
  * Rules:
  * - null quota means unlimited for that dimension and is ignored.
- * - zero quota means exhausted for that dimension (100%).
+ * - zero quota means unlimited for that dimension and is ignored.
  * - the tightest remaining dimension dominates the overall usage.
  */
 export function computeQuotaUsagePercent(
@@ -37,11 +37,7 @@ function addQuotaPercent(
   quota: number | null,
   used: number,
 ): void {
-  if (quota == null) return;
-  if (quota <= 0) {
-    out.push(100);
-    return;
-  }
+  if (quota == null || quota <= 0) return;
 
   const nonNegativeUsed = Math.max(0, used);
   const remaining = Math.max(quota - nonNegativeUsed, 0);

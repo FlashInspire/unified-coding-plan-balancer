@@ -67,7 +67,7 @@ const PROVIDER_FIELDS = [
 ];
 
 function formatQuotaCompact(used: number, quota: number | null): string {
-  if (quota == null) return `${used.toFixed(0)}/∞`;
+  if (quota == null || quota <= 0) return `${used.toFixed(0)}/∞`;
   return `${used.toFixed(0)}/${quota}`;
 }
 
@@ -331,7 +331,7 @@ function QuotaDetail({
       <div className="flex justify-between text-xs">
         <span className="font-medium">{label}</span>
         <span className="text-muted-foreground">
-          {quota != null
+          {quota != null && quota > 0
             ? `${used.toFixed(0)} / ${quota}`
             : `${used.toFixed(0)} / ∞`}
           {suffix && <span className="text-muted-foreground/70">{suffix}</span>}

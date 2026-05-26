@@ -133,7 +133,8 @@ async function tick(): Promise<void> {
       const updates: Record<string, unknown> = {};
 
       // Rolling — reset if past due, or backfill if resetAt is missing
-      if (p.rollingQuota != null) {
+      // quota = 0 or null means unlimited → skip scheduling
+      if (p.rollingQuota != null && p.rollingQuota > 0) {
         if (
           p.rollingQuotaResetAt &&
           p.rollingQuotaResetAt.getTime() <= nowTime
@@ -154,7 +155,8 @@ async function tick(): Promise<void> {
       }
 
       // Weekly — reset if past due, or backfill if resetAt is missing
-      if (p.weekQuota != null) {
+      // quota = 0 or null means unlimited → skip scheduling
+      if (p.weekQuota != null && p.weekQuota > 0) {
         if (p.weekQuotaResetAt && p.weekQuotaResetAt.getTime() <= nowTime) {
           updates.weekQuotaUsed = 0;
           updates.weekQuotaResetAt = computeNextResetAt("week", now);
@@ -164,7 +166,8 @@ async function tick(): Promise<void> {
       }
 
       // Monthly — reset if past due, or backfill if resetAt is missing
-      if (p.monthQuota != null) {
+      // quota = 0 or null means unlimited → skip scheduling
+      if (p.monthQuota != null && p.monthQuota > 0) {
         if (p.monthQuotaResetAt && p.monthQuotaResetAt.getTime() <= nowTime) {
           updates.monthQuotaUsed = 0;
           updates.monthQuotaResetAt = computeNextResetAt("month", now);
