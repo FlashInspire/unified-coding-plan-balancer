@@ -211,8 +211,12 @@ export default function ProvidersPage() {
               label="Rolling"
               used={p.rollingQuotaUsed}
               quota={p.rollingQuota}
-              resetAt={p.rollingQuotaResetAt ? new Date(p.rollingQuotaResetAt) : null}
-              suffix={p.rollingHourOffset ? ` (offset: ${p.rollingHourOffset}h)` : ""}
+              resetAt={
+                p.rollingQuotaResetAt ? new Date(p.rollingQuotaResetAt) : null
+              }
+              suffix={
+                p.rollingHourOffset ? ` (offset: ${p.rollingHourOffset}h)` : ""
+              }
             />
             <QuotaDetail
               label="Weekly"
@@ -224,7 +228,9 @@ export default function ProvidersPage() {
               label="Monthly"
               used={p.monthQuotaUsed}
               quota={p.monthQuota}
-              resetAt={p.monthQuotaResetAt ? new Date(p.monthQuotaResetAt) : null}
+              resetAt={
+                p.monthQuotaResetAt ? new Date(p.monthQuotaResetAt) : null
+              }
             />
           </div>
         </div>
@@ -339,7 +345,9 @@ function QuotaDetail({
           />
         </div>
       )}
-      <div className="text-xs text-muted-foreground">下次重置: {formatNextReset(resetAt)}</div>
+      <div className="text-xs text-muted-foreground">
+        下次重置: {formatNextReset(resetAt)}
+      </div>
     </div>
   );
 }
