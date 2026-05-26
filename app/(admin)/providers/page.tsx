@@ -76,10 +76,27 @@ const PROVIDER_FIELDS = [
   },
 ];
 
+/** Format quota numbers using decimal units (1K = 1000, 1M = 1000000). */
+function formatQuotaNum(n: number): string {
+  if (n >= 1_000_000_000) {
+    const v = n / 1_000_000_000;
+    return `${v % 1 === 0 ? v : v.toFixed(1).replace(/\.0$/, "")}B`;
+  }
+  if (n >= 1_000_000) {
+    const v = n / 1_000_000;
+    return `${v % 1 === 0 ? v : v.toFixed(1).replace(/\.0$/, "")}M`;
+  }
+  if (n >= 1_000) {
+    const v = n / 1_000;
+    return `${v % 1 === 0 ? v : v.toFixed(1).replace(/\.0$/, "")}K`;
+  }
+  return n % 1 === 0 ? String(n) : n.toFixed(1);
+}
+
 function formatQuotaCompact(used: number, quota: number | null): string {
-  if (quota == null || quota <= 0) return `${used.toFixed(0)}/∞`;
+  if (quota == null || quota <= 0) return `${formatQuotaNum(used)}/∞`;
   const pct = Math.min(100, (used / quota) * 100);
-  return `${used.toFixed(0)}/${quota} (${pct.toFixed(0)}%)`;
+  return `${formatQuotaNum(used)}/${formatQuotaNum(quota)} (${pct.toFixed(0)}%)`;
 }
 
 function formatDuration(ms: number): string {
@@ -374,16 +391,16 @@ function QuotaDetail({
         <span className="font-medium">{label}</span>
         <span className="text-muted-foreground">
           {quota != null && quota > 0
-            ? `${totalUsed.toFixed(0)} / ${quota} (${percent?.toFixed(0) ?? 0}%)`
-            : `${totalUsed.toFixed(0)} / ∞`}
+            ? `${formatQuotaNum(totalUsed)} / ${formatQuotaNum(quota)} (${percent?.toFixed(0) ?? 0}%)`
+            : `${formatQuotaNum(totalUsed)} / ∞`}
           {suffix && <span className="text-muted-foreground/70">{suffix}</span>}
         </span>
       </div>
       {tokenExtra && (
         <div className="text-[10px] text-muted-foreground flex gap-2">
-          <span>In: {used.toFixed(0)}</span>
-          <span>Cache: {tokenExtra.cachedInput.toFixed(0)}</span>
-          <span>Out: {tokenExtra.output.toFixed(0)}</span>
+          <span>In: {formatQuotaNum(used)}</span>
+          <span>Cache: {formatQuotaNum(tokenExtra.cachedInput)}</span>
+          <span>Out: {formatQuotaNum(tokenExtra.output)}</span>
         </div>
       )}
       {percent != null && (

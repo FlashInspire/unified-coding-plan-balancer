@@ -42,6 +42,19 @@ const MODEL_FIELDS = [
   { name: "enabled", label: "Enabled", type: "boolean" as const },
 ];
 
+/** Format token counts using binary units (1K = 1024, 1M = 1024²). */
+function formatTokensBin(n: number): string {
+  if (n >= 1_048_576) {
+    const m = n / 1_048_576;
+    return m % 1 === 0 ? `${m}M` : `${m.toFixed(1).replace(/\.0$/, "")}M`;
+  }
+  if (n >= 1024) {
+    const k = n / 1024;
+    return k % 1 === 0 ? `${k}K` : `${k.toFixed(1).replace(/\.0$/, "")}K`;
+  }
+  return String(n);
+}
+
 export default function ModelsPage() {
   const [data, setData] = useState<ModelRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -133,8 +146,16 @@ export default function ModelsPage() {
           columns={[
             { key: "id", label: "ID" },
             { key: "displayName", label: "Name" },
-            { key: "contextLength", label: "Ctx" },
-            { key: "maxTokens", label: "MaxTok" },
+            {
+              key: "contextLength",
+              label: "Ctx",
+              render: (r) => formatTokensBin(Number(r.contextLength)),
+            },
+            {
+              key: "maxTokens",
+              label: "MaxTok",
+              render: (r) => formatTokensBin(Number(r.maxTokens)),
+            },
             {
               key: "enabled",
               label: "Enabled",
