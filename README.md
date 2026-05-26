@@ -22,8 +22,8 @@
 
 > **This gateway does NOT perform cross-protocol translation.** The client protocol must match the upstream provider's protocol.
 >
-> If you are using an **Anthropic-protocol client** (e.g., Anthropic SDK, Claude Code), your upstream providers **must** be configured with `apiMode: anthropic`.
-> If you are using an **OpenAI-protocol client** (e.g., OpenAI SDK), your upstream providers **must** be configured with `apiMode: openai`.
+> If you are using an **Anthropic-protocol client** (e.g., Anthropic SDK, Claude Code), your upstream provider **must** have an Anthropic-compatible endpoint configured (`baseUrlAnthropic` + `apiKeyAnthropic`).
+> If you are using an **OpenAI-protocol client** (e.g., OpenAI SDK), your upstream provider **must** have an OpenAI-compatible endpoint configured (`baseUrlOpenai` + `apiKeyOpenai`).
 >
 > Mixing protocols (e.g., Anthropic client → OpenAI upstream) is **not supported** and will result in errors.
 
@@ -58,7 +58,7 @@ Unified Coding Plan Balancer sits between your applications and multiple upstrea
 
 ### 🔀 Dual Protocol Support
 
-Expose both **OpenAI** and **Anthropic** compatible endpoints simultaneously. Clients must use the endpoint matching their protocol, and upstream providers must be configured with the corresponding `apiMode`.
+Expose both **OpenAI** and **Anthropic** compatible endpoints simultaneously. Clients must use the endpoint matching their protocol. Each provider can configure separate endpoints and keys for each protocol (`baseUrlOpenai`/`apiKeyOpenai` and `baseUrlAnthropic`/`apiKeyAnthropic`).
 
 | Client (in) | Provider (out) | Handling           |
 | :---------: | :------------: | ------------------ |
@@ -152,7 +152,8 @@ Open `http://localhost:3000` — the admin dashboard is at `/login`.
 
 1. **Login** at `/login` with your admin credentials
 2. **Add a Provider** at `/providers`
-   - Fill in `id`, `name`, `baseUrl`, `apiMode` (openai / anthropic), `apiKey`
+   - Fill in `id`, `name`, protocol-specific base URLs and API keys (`baseUrlOpenai`/`apiKeyOpenai`, `baseUrlAnthropic`/`apiKeyAnthropic`), and `headersTemplate`
+   - At least one protocol pair must be configured
    - Click "Test" to verify connectivity
 3. **Add a Model** at `/models`
    - `id` = the model name clients will use (e.g. `gpt-4o`, `claude-3-5-sonnet`)
@@ -208,7 +209,7 @@ User Request > ProviderModel Override > Model Default
 
 Overridable: `temperature`, `top_p`, `top_k`, `max_tokens` (capped), `reasoning_effort`
 
-Not overridable: `context_length`, `api_mode`, `real_model_id`
+Not overridable: `context_length`, `real_model_id`
 
 ---
 

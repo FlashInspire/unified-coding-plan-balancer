@@ -7,7 +7,7 @@
 ## 1. 目标
 
 1. **统一入口**：客户端只需对接一套 endpoint，即可访问任意上游 AI 服务商。
-2. **双协议兼容**：对外同时暴露 **OpenAI** 与 **Anthropic** 两套 API；不同协议的客户端可以访问任意上游模型，由网关自动做协议转换。
+2. **双协议兼容**：对外同时暴露 **OpenAI** 与 **Anthropic** 两套 API；每个 Provider 可分别配置各协议的端点和密钥。客户端必须使用与其协议匹配的端点，不支持跨协议转换。
 3. **解耦模型与上游**：同一个逻辑模型（`model_id`）可挂在多个 Provider 上，每个 Provider 上有不同的 `real_model_id` 和参数覆盖。
 4. **配额感知路由**：后台定时刷新各 Provider 剩余配额，请求时优先选择剩余量最多的；失败自动降级到下一个候选。
 5. **可观测**：完整记录调用日志、流式 TTFT、输出 TPS、Input / Cached Input / Output token 数，按分钟 × API Key × Model × Provider 聚合。
@@ -43,7 +43,7 @@
    │            ▼                            ▲                        │
    │  ┌────────────────────┐    ┌────────────┴────────────────────┐   │
    │  │ Provider Adapter   │    │  Quota Refresher (worker, 60s)  │   │
-   │  │ (proto translate)  │    └─────────────────────────────────┘   │
+  │  │ (protocol format)  │    └─────────────────────────────────┘   │
    │  └─────────┬──────────┘                                          │
    │            ▼                                                     │
    │  ┌────────────────────┐    ┌──────────────────────────────────┐  │
@@ -97,11 +97,11 @@ model Model {
 model Provider {
   id                     String   @id                   // e.g. "openai-official", "azure-eu"
   name                   String
-  baseUrl                String
-  apiMode                String                         // upstream protocol: "openai" | "anthropic"
+  baseUrlOpenai          String?                        // OpenAI-compatible endpoint URL
+  apiKeyOpenai           String?                        // API key for OpenAI endpoint
+  baseUrlAnthropic       String?                        // Anthropic-compatible endpoint URL
+  apiKeyAnthropic        String?                        // API key for Anthropic endpoint
   headersTemplate        String                         // JSON-encoded extra headers
-  apiKey                 String                         // 明文存储, 仅 session 保护的后台 API 可读
-  quotaHandlerClassName  String                         // 反射加载, e.g. "OpenAIQuotaHandler"
   enabled                Boolean  @default(true)
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
@@ -286,17 +286,17 @@ CREATE INDEX IF NOT EXISTS idx_usage_minute_model ON usage_minute(model_id, minu
 
 ### 4.2 字段分类
 
-| 参数                           | 用户可覆盖 | 备注                                                                   |
-| ------------------------------ | ---------- | ---------------------------------------------------------------------- |
-| `temperature`                  | ✅         | 从请求体读                                                             |
-| `top_p`                        | ✅         | 从请求体读                                                             |
-| `top_k`                        | ✅         | OpenAI body 用 `top_k` 透传; Anthropic 原生支持                        |
-| `reasoning_effort`             | ✅         | OpenAI 使用 `reasoning_effort` 字段; Anthropic 使用 `thinking`         |
-| `max_tokens`                   | ✅ 有上限  | 用户值与 `ProviderModel.maxTokensOverride ?? Model.maxTokens` 取 `min` |
-| `include_reasoning_in_request` | ✅         | 决定是否把上一轮 reasoning 内容回传给上游                              |
-| `context_length`               | ❌         | 硬限制, 仅管理员可配                                                   |
-| `api_mode`                     | ❌         | 由 **Provider** 决定（上游协议）                                       |
-| `real_model_id`                | ❌         | 内部路由用, 用户不可见也不可改                                         |
+| 参数                           | 用户可覆盖 | 备注                                                                                        |
+| ------------------------------ | ---------- | ------------------------------------------------------------------------------------------- |
+| `temperature`                  | ✅         | 从请求体读                                                                                  |
+| `top_p`                        | ✅         | 从请求体读                                                                                  |
+| `top_k`                        | ✅         | OpenAI body 用 `top_k` 透传; Anthropic 原生支持                                             |
+| `reasoning_effort`             | ✅         | OpenAI 使用 `reasoning_effort` 字段; Anthropic 使用 `thinking`                              |
+| `max_tokens`                   | ✅ 有上限  | 用户值与 `ProviderModel.maxTokensOverride ?? Model.maxTokens` 取 `min`                      |
+| `include_reasoning_in_request` | ✅         | 决定是否把上一轮 reasoning 内容回传给上游                                                   |
+| `context_length`               | ❌         | 硬限制, 仅管理员可配                                                                        |
+| `api_mode`                     | ❌         | 由客户端请求的 endpoint 决定（`/v1/chat/completions` → openai，`/v1/messages` → anthropic） |
+| `real_model_id`                | ❌         | 内部路由用, 用户不可见也不可改                                                              |
 
 ### 4.3 解析函数
 
@@ -310,7 +310,7 @@ function resolveModelParams(
   const maxTokensCap = pm.maxTokensOverride ?? model.maxTokens;
   return {
     contextLength: pm.contextLengthOverride ?? model.contextLength, // 不可覆盖
-    apiMode: provider.apiMode, // 不可覆盖，由 Provider 决定
+    apiMode: "openai", // 由请求 endpoint 决定
     realModelId: pm.realModelId, // 不可覆盖
 
     temperature:
@@ -433,12 +433,12 @@ export function getQuotaHandler(name: string): QuotaHandler {
 
 ### 6.1 协议矩阵
 
-| 客户端协议 (`api_mode_in`) | Provider 协议 (`api_mode_out`) | 处理                                                                 |
-| -------------------------- | ------------------------------ | -------------------------------------------------------------------- |
-| OpenAI                     | OpenAI                         | 直通（仍需 `resolveModelParams` 重组 body）                          |
-| OpenAI                     | Anthropic                      | OpenAI → Anthropic 转上行；Anthropic → OpenAI 转下行（含流式 chunk） |
-| Anthropic                  | Anthropic                      | 直通                                                                 |
-| Anthropic                  | OpenAI                         | 双向转换                                                             |
+| 客户端协议 (`api_mode_in`) | Provider 协议 (`api_mode_out`) | 处理                                        |
+| -------------------------- | ------------------------------ | ------------------------------------------- |
+| OpenAI                     | OpenAI                         | 直通（仍需 `resolveModelParams` 重组 body） |
+| Anthropic                  | Anthropic                      | 直通                                        |
+
+> ⚠️ **不支持跨协议路由。** 客户端协议必须与 Provider 配置的端点协议一致。
 
 ### 6.2 Adapter 接口
 
@@ -451,14 +451,14 @@ export interface ProviderAdapter {
 }
 ```
 
-入口层先把客户端请求规范化为 `NormalizedChatRequest`，Adapter 根据 `apiMode_out` 转成对应上游格式；响应流再规范化回客户端要求的协议输出。
+入口层先把客户端请求规范化为 `NormalizedChatRequest`，Adapter 根据客户端 endpoint 对应的协议转成对应上游格式；响应流直接以同协议返回。
 
-### 6.3 转换关键点
+### 6.3 协议格式要点
 
 - **System message**：OpenAI 用 `messages[0].role = "system"`，Anthropic 用顶层 `system` 字段
-- **Tool calls / function calling**：双向映射 `tools` / `tool_choice` / `tool_use` / `tool_result`
-- **Reasoning**：OpenAI `reasoning_effort` ↔ Anthropic `thinking.budget_tokens`
-- **Stream chunk**：OpenAI 的 `data: {choices:[{delta:...}]}\n\n` ↔ Anthropic 的 `event: content_block_delta`
+- **Tool calls / function calling**：OpenAI 和 Anthropic 各自格式不同，客户端协议必须与上游一致
+- **Reasoning**：OpenAI `reasoning_effort` ↔ Anthropic `thinking.budget_tokens`，各自原生支持
+- **Stream chunk**：OpenAI 的 `data: {choices:[{delta:...}]}\n\n`，Anthropic 的 `event: content_block_delta`，分别处理
 
 ---
 

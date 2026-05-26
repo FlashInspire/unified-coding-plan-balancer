@@ -121,8 +121,7 @@
 - 任何向上游发请求的 body **必须**通过 `lib/routing/resolveParams.ts` 中的 `resolveModelParams()` 计算最终参数
 - 严禁把客户端 body 直接透传给上游
 - 优先级链：`用户请求 > ProviderModel.*Override > Model.*`
-- 不可被用户覆盖的字段：`context_length` / `api_mode` / `real_model_id`
-  （`api_mode` 由 **Provider** 决定，不在模型层）
+- 不可被用户覆盖的字段：`context_length` / `real_model_id`
 - `max_tokens` 可被用户覆盖但需取 `min(用户值, ProviderModel.maxTokensOverride ?? Model.maxTokens)`
 
 ### 4.3 指标 / 日志
@@ -155,7 +154,8 @@
 ### 5.1 新增一个 Provider
 
 1. 在管理后台 `/providers` 新建，或写 seed 脚本
-2. 填写 `id` / `name` / `baseUrl` / `apiMode` / `headersTemplate` / `apiKey` / `quotaHandlerClassName`
+2. 填写 `id` / `name` / `baseUrlOpenai` / `apiKeyOpenai` / `baseUrlAnthropic` / `apiKeyAnthropic` / `headersTemplate`
+   - 至少配置一组协议端点
 3. 如需新协议适配，在 `lib/adapters/` 下新增；否则复用 `openai` / `anthropic`
 4. 如需新的配额查询逻辑，按 §5.3 流程
 5. 在 `/quota` 页面点 "刷新" 验证 snapshot 可正常拉取
@@ -167,7 +167,6 @@
 1. 在 `/models` 新建 `Model`：
    - `id` 即对外 `model_id`（如 `gpt-4o`）
    - 配置默认 `contextLength` / `maxTokens` / `temperature` / `topP` / `topK` / `reasoningEffort` / `includeReasoningInRequest`
-   - 注意：`apiMode` 不在这里，它定义在 Provider 上
 2. 在 `/provider-models` 为该模型挂接一个或多个 Provider：
    - `realModelId` 写上游真实 id（如 `gpt-4o-2024-11-20`）
    - 如该 Provider 上参数不同，填写对应 `*Override`

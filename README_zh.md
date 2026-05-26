@@ -22,8 +22,8 @@
 
 > **本网关不进行跨协议转换。** 客户端协议必须与上游服务商的协议一致。
 >
-> 如果你使用 **Anthropic 协议客户端**（如 Anthropic SDK、Claude Code），上游服务商**必须**配置为 `apiMode: anthropic`。
-> 如果你使用 **OpenAI 协议客户端**（如 OpenAI SDK），上游服务商**必须**配置为 `apiMode: openai`。
+> 如果你使用 **Anthropic 协议客户端**（如 Anthropic SDK、Claude Code），上游服务商**必须**配置 Anthropic 兼容的端点（`baseUrlAnthropic` + `apiKeyAnthropic`）。
+> 如果你使用 **OpenAI 协议客户端**（如 OpenAI SDK），上游服务商**必须**配置 OpenAI 兼容的端点（`baseUrlOpenai` + `apiKeyOpenai`）。
 >
 > 混合协议（如 Anthropic 客户端 → OpenAI 上游）**不受支持**，会导致请求失败。
 
@@ -58,7 +58,7 @@ Unified Coding Plan Balancer 是一个部署在你的应用和多个上游 AI �
 
 ### 🔀 双协议支持
 
-同时暴露 **OpenAI** 和 **Anthropic** 兼容的 API 端点。客户端必须使用与其协议匹配的端点，上游服务商也必须配置对应的 `apiMode`。
+同时暴露 **OpenAI** 和 **Anthropic** 兼容的 API 端点。客户端必须使用与其协议匹配的端点。每个服务商可以分别配置各协议的端点和密钥（`baseUrlOpenai`/`apiKeyOpenai` 和 `baseUrlAnthropic`/`apiKeyAnthropic`）。
 
 | 客户端协议 | 上游协议  | 处理方式 |
 | :--------: | :-------: | -------- |
@@ -152,7 +152,8 @@ pnpm dev
 
 1. **登录**：访问 `/login`，使用管理员账号密码
 2. **添加服务商**：进入 `/providers`
-   - 填写 `id`、`name`、`baseUrl`、`apiMode`（openai / anthropic）、`apiKey`
+   - 填写 `id`、`name`、各协议的 Base URL 和 API Key（`baseUrlOpenai`/`apiKeyOpenai`、`baseUrlAnthropic`/`apiKeyAnthropic`）、`headersTemplate`
+   - 至少需要配置一组协议端点
    - 点击"测试"验证连通性
 3. **添加模型**：进入 `/models`
    - `id` = 客户端将使用的模型名（如 `gpt-4o`、`claude-3-5-sonnet`）
@@ -208,7 +209,7 @@ curl http://localhost:3000/v1/messages \
 
 可覆盖：`temperature`、`top_p`、`top_k`、`max_tokens`（有上限）、`reasoning_effort`
 
-不可覆盖：`context_length`、`api_mode`、`real_model_id`
+不可覆盖：`context_length`、`real_model_id`
 
 ---
 
