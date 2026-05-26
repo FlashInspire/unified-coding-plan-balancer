@@ -7,7 +7,7 @@ import { FormDialog, type SelectOption } from "../_components/form-dialog";
 import { apiFetch } from "../_components/api";
 import type { ProviderModelRow, ProviderRow, ModelRow } from "@/lib/types";
 
-const PM_FIELDS = [
+const PM_FIELDS_BASE = [
   {
     name: "providerId",
     label: "Provider",
@@ -67,6 +67,33 @@ const PM_FIELDS = [
     defaultValue: true,
   },
 ];
+
+/** Return fee rate fields appropriate for the provider's usageMode. */
+function feeRateFieldsForMode(usageMode?: string) {
+  const tokenOnly = ["feeRateCachedInput", "feeRateOutput"];
+  if (usageMode === "token") {
+    // Token mode: show all three rates, relabel feeRateInput
+    return PM_FIELDS_BASE.map((f) =>
+      f.name === "feeRateInput" ? { ...f, label: "Fee Rate (Input Token)" } : f,
+    );
+  }
+  // Request mode: hide cached input & output rates
+  return PM_FIELDS_BASE.filter((f) => !tokenOnly.includes(f.name)).map((f) =>
+    f.name === "feeRateInput" ? { ...f, label: "Fee Rate (per Request)" } : f,
+  );
+}
+
+/** Return DataTable columns for fee rates based on provider usageMode. */
+function feeRateColumnsForMode(usageMode?: string) {
+  if (usageMode === "token") {
+    return [
+      { key: "feeRateInput", label: "Rate In" },
+      { key: "feeRateCachedInput", label: "Rate Cache" },
+      { key: "feeRateOutput", label: "Rate Out" },
+    ];
+  }
+  return [{ key: "feeRateInput", label: "Rate" }];
+}
 
 export default function ProviderModelsPage() {
   const [data, setData] = useState<ProviderModelRow[]>([]);
@@ -165,9 +192,7 @@ export default function ProviderModelsPage() {
                   { key: "modelId", label: "Model" },
                   { key: "realModelId", label: "Real Model" },
                   { key: "weight", label: "W" },
-                  { key: "feeRateInput", label: "Rate In" },
-                  { key: "feeRateCachedInput", label: "Rate Cache" },
-                  { key: "feeRateOutput", label: "Rate Out" },
+                  ...feeRateColumnsForMode(prov.usageMode),
                   {
                     key: "enabled",
                     label: "Enabled",
@@ -219,7 +244,7 @@ export default function ProviderModelsPage() {
         <FormDialog
           title="New Provider-Model"
           triggerLabel="+ New"
-          fields={PM_FIELDS.map((f) =>
+          fields={feeRateFieldsForMode(undefined).map((f) =>
             f.name === "providerId"
               ? { ...f, options: providers }
               : f.name === "modelId"
@@ -239,9 +264,9 @@ export default function ProviderModelsPage() {
       {/* Edit dialog */}
       <FormDialog
         title={`Edit: ${editRow?.providerId ?? ""} / ${editRow?.modelId ?? ""}`}
-        fields={PM_FIELDS.filter(
-          (f) => f.name !== "providerId" && f.name !== "modelId",
-        )}
+        fields={feeRateFieldsForMode(
+          providersRaw.find((p) => p.id === editRow?.providerId)?.usageMode,
+        ).filter((f) => f.name !== "providerId" && f.name !== "modelId")}
         open={editRow != null}
         onOpenChange={(o) => {
           if (!o) setEditRow(null);
@@ -263,7 +288,9 @@ export default function ProviderModelsPage() {
       {/* Add model to specific provider shortcut */}
       <FormDialog
         title={`Add Model to ${addForProvider ?? ""}`}
-        fields={PM_FIELDS.map((f) =>
+        fields={feeRateFieldsForMode(
+          providersRaw.find((p) => p.id === addForProvider)?.usageMode,
+        ).map((f) =>
           f.name === "providerId"
             ? { ...f, options: providers }
             : f.name === "modelId"
