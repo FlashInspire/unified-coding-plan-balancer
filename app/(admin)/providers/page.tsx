@@ -48,8 +48,18 @@ const PROVIDER_FIELDS = [
     type: "number" as const,
   },
   {
+    name: "weekQuotaUsed",
+    label: "Week Quota Used",
+    type: "number" as const,
+  },
+  {
     name: "monthQuota",
     label: "Month Quota",
+    type: "number" as const,
+  },
+  {
+    name: "monthQuotaUsed",
+    label: "Month Quota Used",
     type: "number" as const,
   },
   {
