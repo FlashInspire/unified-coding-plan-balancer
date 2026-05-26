@@ -25,6 +25,7 @@ export default function AdminLayout({
             <Link href="/api-keys">API Keys</Link>
             <Link href="/quota">Quota</Link>
             <Link href="/logs">Logs & Usage</Link>
+            <Link href="/users">Users</Link>
             <Link href="/settings">Settings</Link>
           </div>
           <div className="ml-auto">

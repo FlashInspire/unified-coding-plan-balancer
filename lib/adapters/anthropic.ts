@@ -88,7 +88,7 @@ export class AnthropicAdapter implements ProviderAdapter {
     provider: ResolvedProvider,
     req: NormalizedChatRequest,
   ): Promise<NormalizedChatResponse> {
-    const url = joinUrl(provider.baseUrl, "/messages");
+    const url = joinUrl(provider.baseUrl, "/v1/messages");
     const res = await fetch(url, {
       method: "POST",
       headers: headers(provider),
@@ -150,7 +150,7 @@ export class AnthropicAdapter implements ProviderAdapter {
     provider: ResolvedProvider,
     req: NormalizedChatRequest,
   ): AsyncGenerator<NormalizedChunk> {
-    const url = joinUrl(provider.baseUrl, "/messages");
+    const url = joinUrl(provider.baseUrl, "/v1/messages");
     const res = await fetch(url, {
       method: "POST",
       headers: headers(provider),

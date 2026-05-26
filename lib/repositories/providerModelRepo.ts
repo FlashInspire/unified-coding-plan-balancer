@@ -33,7 +33,7 @@ export interface RoutingCandidate {
 
 export const providerModelRepo = {
   async list(): Promise<ProviderModelRow[]> {
-    return prisma.providerModel.findMany({ orderBy: { createdAt: "asc" } });
+    return prisma.providerModel.findMany({ orderBy: { modelId: "asc" } });
   },
   async findById(id: string): Promise<ProviderModelRow | null> {
     return prisma.providerModel.findUnique({ where: { id } });

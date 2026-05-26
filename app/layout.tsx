@@ -17,6 +17,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Unified Coding Plan Balancer",
   description: "Self-hosted AI gateway",
+  icons: {
+    icon: "/icon.png",
+  },
 };
 
 export default function RootLayout({

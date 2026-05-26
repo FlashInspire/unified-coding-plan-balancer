@@ -7,6 +7,19 @@ export const adminUserRepo = {
     return prisma.adminUser.count();
   },
 
+  async findAll(): Promise<
+    { id: string; username: string; createdAt: Date }[]
+  > {
+    return prisma.adminUser.findMany({
+      select: { id: true, username: true, createdAt: true },
+      orderBy: { username: "asc" },
+    });
+  },
+
+  async findById(id: string) {
+    return prisma.adminUser.findUnique({ where: { id } });
+  },
+
   async findByUsername(username: string) {
     return prisma.adminUser.findUnique({ where: { username } });
   },
@@ -24,6 +37,10 @@ export const adminUserRepo = {
       where: { id },
       data: { passwordHash },
     });
+  },
+
+  async delete(id: string): Promise<void> {
+    await prisma.adminUser.delete({ where: { id } });
   },
 
   /**

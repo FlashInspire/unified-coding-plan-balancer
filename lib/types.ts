@@ -41,9 +41,7 @@ export interface ProviderRow {
   rollingQuotaResetAt: Date | null;
   weekQuotaResetAt: Date | null;
   monthQuotaResetAt: Date | null;
-  rollingQuotaCron: string | null;
-  weekQuotaCron: string | null;
-  monthQuotaCron: string | null;
+  rollingHourOffset: number;
   enabled: boolean;
   createdAt: Date;
   updatedAt: Date;

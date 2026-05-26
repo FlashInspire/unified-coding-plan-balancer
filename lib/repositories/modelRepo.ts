@@ -18,7 +18,7 @@ export type ModelPatch = Partial<Omit<ModelInput, "id">>;
 
 export const modelRepo = {
   async list(): Promise<ModelRow[]> {
-    return prisma.model.findMany({ orderBy: { id: "asc" } });
+    return prisma.model.findMany({ orderBy: { displayName: "asc" } });
   },
   async findById(id: string): Promise<ModelRow | null> {
     return prisma.model.findUnique({ where: { id } });

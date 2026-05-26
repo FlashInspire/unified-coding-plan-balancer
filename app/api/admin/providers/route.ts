@@ -18,9 +18,7 @@ const createSchema = z
     rollingQuotaUsed: z.number().int().optional(),
     weekQuotaUsed: z.number().int().optional(),
     monthQuotaUsed: z.number().int().optional(),
-    rollingQuotaCron: z.string().nullable().optional(),
-    weekQuotaCron: z.string().nullable().optional(),
-    monthQuotaCron: z.string().nullable().optional(),
+    rollingHourOffset: z.number().int().min(0).max(23).optional(),
     weight: z.number().int().min(0).optional(),
     enabled: z.boolean().optional(),
   })

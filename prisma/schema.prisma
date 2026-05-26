@@ -53,9 +53,7 @@ model Provider {
   rollingQuotaResetAt DateTime?
   weekQuotaResetAt    DateTime?
   monthQuotaResetAt   DateTime?
-  rollingQuotaCron    String?   @default("0 */5 * * *")
-  weekQuotaCron       String?   @default("0 0 * * 1")
-  monthQuotaCron      String?   @default("0 0 1 * *")
+  rollingHourOffset   Int       @default(0) // 0–23; rolling reset snaps to hours ≡ offset (mod 5)
   enabled             Boolean   @default(true)
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt

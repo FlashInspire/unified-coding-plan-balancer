@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Cron } from "croner";
 import { Accordion } from "../_components/accordion";
 import { FormDialog } from "../_components/form-dialog";
 import { apiFetch } from "../_components/api";
@@ -54,6 +53,12 @@ const PROVIDER_FIELDS = [
     type: "number" as const,
   },
   {
+    name: "rollingHourOffset",
+    label: "Rolling Hour Offset (0–23)",
+    type: "number" as const,
+    defaultValue: 0,
+  },
+  {
     name: "enabled",
     label: "Enabled",
     type: "boolean" as const,
@@ -66,17 +71,6 @@ function formatQuotaCompact(used: number, quota: number | null): string {
   return `${used.toFixed(0)}/${quota}`;
 }
 
-function getNextCronFire(cronExpr: string | null): Date | null {
-  if (!cronExpr) return null;
-  try {
-    const job = new Cron(cronExpr);
-    const next = job.nextRun();
-    return next;
-  } catch {
-    return null;
-  }
-}
-
 function formatDuration(ms: number): string {
   if (ms <= 0) return "即将";
   const h = Math.floor(ms / 3_600_000);
@@ -86,13 +80,13 @@ function formatDuration(ms: number): string {
   return "<1m 后";
 }
 
-function formatNextReset(next: Date | null): string {
-  if (!next) return "—";
-  const diff = next.getTime() - Date.now();
+function formatNextReset(resetAt: Date | null): string {
+  if (!resetAt) return "—";
+  const diff = resetAt.getTime() - Date.now();
   if (diff < 24 * 60 * 60_000) {
     return formatDuration(diff);
   }
-  return next.toLocaleString();
+  return resetAt.toLocaleString();
 }
 
 function maskKey(key: string): string {
@@ -217,22 +211,20 @@ export default function ProvidersPage() {
               label="Rolling"
               used={p.rollingQuotaUsed}
               quota={p.rollingQuota}
-              cronExpr={p.rollingQuotaCron}
-              nextReset={formatNextReset(getNextCronFire(p.rollingQuotaCron))}
+              resetAt={p.rollingQuotaResetAt ? new Date(p.rollingQuotaResetAt) : null}
+              suffix={p.rollingHourOffset ? ` (offset: ${p.rollingHourOffset}h)` : ""}
             />
             <QuotaDetail
               label="Weekly"
               used={p.weekQuotaUsed}
               quota={p.weekQuota}
-              cronExpr={p.weekQuotaCron}
-              nextReset={formatNextReset(getNextCronFire(p.weekQuotaCron))}
+              resetAt={p.weekQuotaResetAt ? new Date(p.weekQuotaResetAt) : null}
             />
             <QuotaDetail
               label="Monthly"
               used={p.monthQuotaUsed}
               quota={p.monthQuota}
-              cronExpr={p.monthQuotaCron}
-              nextReset={formatNextReset(getNextCronFire(p.monthQuotaCron))}
+              resetAt={p.monthQuotaResetAt ? new Date(p.monthQuotaResetAt) : null}
             />
           </div>
         </div>
@@ -317,14 +309,14 @@ function QuotaDetail({
   label,
   used,
   quota,
-  cronExpr,
-  nextReset,
+  resetAt,
+  suffix,
 }: {
   label: string;
   used: number;
   quota: number | null;
-  cronExpr: string | null;
-  nextReset: string;
+  resetAt: Date | null;
+  suffix?: string;
 }) {
   const percent =
     quota != null && quota > 0 ? Math.min(100, (used / quota) * 100) : null;
@@ -336,6 +328,7 @@ function QuotaDetail({
           {quota != null
             ? `${used.toFixed(0)} / ${quota}`
             : `${used.toFixed(0)} / ∞`}
+          {suffix && <span className="text-muted-foreground/70">{suffix}</span>}
         </span>
       </div>
       {percent != null && (
@@ -346,12 +339,7 @@ function QuotaDetail({
           />
         </div>
       )}
-      {cronExpr && (
-        <div className="text-xs font-mono text-muted-foreground/70">
-          {cronExpr}
-        </div>
-      )}
-      <div className="text-xs text-muted-foreground">下次重置: {nextReset}</div>
+      <div className="text-xs text-muted-foreground">下次重置: {formatNextReset(resetAt)}</div>
     </div>
   );
 }

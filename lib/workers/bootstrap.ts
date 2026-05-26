@@ -8,7 +8,7 @@ import { startAggregator } from "@/lib/metrics/aggregator";
 import { startArchiver } from "@/lib/metrics/archiver";
 import { computeQuotaUsagePercent } from "@/lib/quota/computeUsagePercent";
 import { quotaSnapshotRepo } from "@/lib/repositories/quotaSnapshotRepo";
-import { startQuotaCronScheduler } from "./quota-cron-scheduler";
+import { startResetScheduler } from "@/lib/quota/reset-scheduler";
 
 // --- Quota Compute Worker ---
 // Every 60 s: derive usagePercent from local counter fields (no upstream calls).
@@ -47,7 +47,7 @@ export function startWorkers(): void {
   startFlusher();
   startAggregator();
   startArchiver();
-  startQuotaCronScheduler();
+  startResetScheduler();
   startQuotaComputeWorker();
 
   console.log("[ucpb] Background workers started.");

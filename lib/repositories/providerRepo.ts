@@ -15,9 +15,7 @@ export interface ProviderInput {
   rollingQuotaUsed?: number;
   weekQuotaUsed?: number;
   monthQuotaUsed?: number;
-  rollingQuotaCron?: string | null;
-  weekQuotaCron?: string | null;
-  monthQuotaCron?: string | null;
+  rollingHourOffset?: number;
   enabled?: boolean;
 }
 
@@ -34,9 +32,7 @@ export interface ProviderPatch {
   rollingQuotaUsed?: number;
   weekQuotaUsed?: number;
   monthQuotaUsed?: number;
-  rollingQuotaCron?: string | null;
-  weekQuotaCron?: string | null;
-  monthQuotaCron?: string | null;
+  rollingHourOffset?: number;
   enabled?: boolean;
 }
 
@@ -66,9 +62,7 @@ export const providerRepo = {
         rollingQuotaUsed: input.rollingQuotaUsed ?? 0,
         weekQuotaUsed: input.weekQuotaUsed ?? 0,
         monthQuotaUsed: input.monthQuotaUsed ?? 0,
-        rollingQuotaCron: input.rollingQuotaCron ?? null,
-        weekQuotaCron: input.weekQuotaCron ?? null,
-        monthQuotaCron: input.monthQuotaCron ?? null,
+        rollingHourOffset: input.rollingHourOffset ?? 0,
         enabled: input.enabled ?? true,
       },
     });
@@ -111,14 +105,8 @@ export const providerRepo = {
         ...(patch.monthQuotaUsed !== undefined
           ? { monthQuotaUsed: patch.monthQuotaUsed }
           : {}),
-        ...(patch.rollingQuotaCron !== undefined
-          ? { rollingQuotaCron: patch.rollingQuotaCron }
-          : {}),
-        ...(patch.weekQuotaCron !== undefined
-          ? { weekQuotaCron: patch.weekQuotaCron }
-          : {}),
-        ...(patch.monthQuotaCron !== undefined
-          ? { monthQuotaCron: patch.monthQuotaCron }
+        ...(patch.rollingHourOffset !== undefined
+          ? { rollingHourOffset: patch.rollingHourOffset }
           : {}),
         ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
       },
