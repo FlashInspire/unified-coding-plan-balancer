@@ -15,6 +15,7 @@ import {
 import { getAdapter } from "@/lib/adapters";
 import { UpstreamError } from "@/lib/adapters/openai";
 import { metricsBuffer, type RequestLogRecord } from "@/lib/metrics/buffer";
+import { logRequestStart } from "@/lib/metrics/flusher";
 import { modelRepo } from "@/lib/repositories/modelRepo";
 import { providerModelRepo } from "@/lib/repositories/providerModelRepo";
 import { providerRepo } from "@/lib/repositories/providerRepo";
@@ -93,6 +94,15 @@ function emitMetrics(record: RequestLogRecord): void {
   }
 }
 
+/** Insert an in-flight log row and return the row ID. Best-effort. */
+function emitMetricsStart(record: RequestLogRecord): number | null {
+  try {
+    return logRequestStart(record);
+  } catch {
+    return null;
+  }
+}
+
 async function loadModel(modelId: string): Promise<ModelRow> {
   const m = await modelRepo.findById(modelId);
   if (!m || !m.enabled) throw new NoCandidateError(modelId);
@@ -139,6 +149,28 @@ export async function dispatchChat(
     };
     const started = Date.now();
     activeRequests.incr(c.provider.id);
+    const requestId = emitMetricsStart({
+      ts: started,
+      apiKeyId: ctx.apiKeyId,
+      modelId,
+      providerId: c.provider.id,
+      providerName: c.provider.name,
+      realModelId: params.realModelId,
+      apiModeIn: ctx.apiModeIn,
+      apiModeOut: ctx.apiModeIn,
+      stream: false,
+      status: 0,
+      errorCode: null,
+      ttftMs: null,
+      tpsOut: null,
+      latencyMs: 0,
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      ip: ctx.ip,
+      apiKeyName: ctx.apiKeyName,
+      userAgent: ctx.userAgent,
+    });
     try {
       const resp = await adapter.chat(
         resolveProvider(c.provider, ctx.apiModeIn),
@@ -146,6 +178,7 @@ export async function dispatchChat(
       );
       const latency = Date.now() - started;
       emitMetrics({
+        requestId: requestId ?? undefined,
         ts: started,
         apiKeyId: ctx.apiKeyId,
         modelId,
@@ -172,10 +205,22 @@ export async function dispatchChat(
       });
       // Best effort counter accounting; request success should not fail on quota write.
       try {
-        await providerRepo.incrementQuotaUsedByRequest(
-          c.provider.id,
-          c.pm.feeRate ?? 1,
-        );
+        if (c.provider.usageMode === "token") {
+          await providerRepo.incrementQuotaUsedByTokens(
+            c.provider.id,
+            resp.usage.inputTokens,
+            resp.usage.cachedInputTokens,
+            resp.usage.outputTokens,
+            c.pm.feeRateInput ?? 1,
+            c.pm.feeRateCachedInput ?? 0.1,
+            c.pm.feeRateOutput ?? 4,
+          );
+        } else {
+          await providerRepo.incrementQuotaUsedByRequest(
+            c.provider.id,
+            c.pm.feeRateInput ?? 1,
+          );
+        }
       } catch {
         /* never block successful response on quota counter write */
       }
@@ -186,6 +231,7 @@ export async function dispatchChat(
       const message = err instanceof Error ? err.message : "Unknown";
       failures.push({ providerId: c.provider.id, status, message });
       emitMetrics({
+        requestId: requestId ?? undefined,
         ts: started,
         apiKeyId: ctx.apiKeyId,
         modelId,
@@ -269,6 +315,28 @@ export async function dispatchChatStream(
     };
     const started = Date.now();
     activeRequests.incr(c.provider.id);
+    const requestId = emitMetricsStart({
+      ts: started,
+      apiKeyId: ctx.apiKeyId,
+      modelId,
+      providerId: c.provider.id,
+      providerName: c.provider.name,
+      realModelId: params.realModelId,
+      apiModeIn: ctx.apiModeIn,
+      apiModeOut: ctx.apiModeIn,
+      stream: true,
+      status: 0,
+      errorCode: null,
+      ttftMs: null,
+      tpsOut: null,
+      latencyMs: 0,
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      ip: ctx.ip,
+      apiKeyName: ctx.apiKeyName,
+      userAgent: ctx.userAgent,
+    });
     try {
       const src = adapter.chatStream(
         resolveProvider(c.provider, ctx.apiModeIn),
@@ -277,6 +345,7 @@ export async function dispatchChatStream(
       // Peek first iteration to detect immediate errors.
       const wrapped = wrapStream(src, {
         started,
+        requestId,
         ctx,
         modelId,
         provider: c.provider,
@@ -306,6 +375,7 @@ function wrapStream(
   src: AsyncIterable<NormalizedChunk>,
   ctx: {
     started: number;
+    requestId: number | null;
     ctx: DispatchContext;
     modelId: string;
     provider: ProviderRow;
@@ -345,6 +415,7 @@ function wrapStream(
             ? (outTokens / (latency - ttft)) * 1000
             : null;
         emitMetrics({
+          requestId: ctx.requestId ?? undefined,
           ts: ctx.started,
           apiKeyId: ctx.ctx.apiKeyId,
           modelId: ctx.modelId,
@@ -369,10 +440,22 @@ function wrapStream(
         if (status === 200) {
           // Streaming request completed successfully; count one successful call.
           try {
-            await providerRepo.incrementQuotaUsedByRequest(
-              ctx.provider.id,
-              ctx.pm.feeRate ?? 1,
-            );
+            if (ctx.provider.usageMode === "token") {
+              await providerRepo.incrementQuotaUsedByTokens(
+                ctx.provider.id,
+                usage.inputTokens,
+                usage.cachedInputTokens,
+                outTokens,
+                ctx.pm.feeRateInput ?? 1,
+                ctx.pm.feeRateCachedInput ?? 0.1,
+                ctx.pm.feeRateOutput ?? 4,
+              );
+            } else {
+              await providerRepo.incrementQuotaUsedByRequest(
+                ctx.provider.id,
+                ctx.pm.feeRateInput ?? 1,
+              );
+            }
           } catch {
             /* never block stream completion on quota counter write */
           }
@@ -382,4 +465,231 @@ function wrapStream(
       }
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Direct routing: provider/model bypass (works even on disabled providers)
+// ---------------------------------------------------------------------------
+
+export async function dispatchDirectChat(
+  providerId: string,
+  modelId: string,
+  messages: NormalizedChatRequest["messages"],
+  user: UserOverrides,
+  ctx: DispatchContext,
+  extra?: Pick<NormalizedChatRequest, "extraParams" | "rawMessages">,
+): Promise<DispatchSuccess> {
+  const c = await providerModelRepo.findDirect(providerId, modelId);
+  if (!c) {
+    throw new NoCandidateError(
+      `${providerId}/${modelId}`,
+      "provider-model pair not found",
+    );
+  }
+  const model = await modelRepo.findById(modelId);
+  if (!model) throw new NoCandidateError(modelId, "model not found");
+  const params = resolveModelParams(model, c.provider, c.pm, user);
+  const adapter = getAdapter(ctx.apiModeIn);
+  const req: NormalizedChatRequest = {
+    messages,
+    stream: false,
+    realModelId: params.realModelId,
+    maxTokens: params.maxTokens,
+    temperature: params.temperature,
+    topP: params.topP,
+    topK: params.topK,
+    reasoningEffort: params.reasoningEffort,
+    stop: extra?.extraParams?.stop as string[] | undefined,
+    tools: extra?.extraParams?.tools,
+    tool_choice: extra?.extraParams?.tool_choice,
+    extraParams: extra?.extraParams,
+    rawMessages: extra?.rawMessages,
+  };
+  const started = Date.now();
+  activeRequests.incr(c.provider.id);
+  const requestId = emitMetricsStart({
+    ts: started,
+    apiKeyId: ctx.apiKeyId,
+    modelId,
+    providerId: c.provider.id,
+    providerName: c.provider.name,
+    realModelId: params.realModelId,
+    apiModeIn: ctx.apiModeIn,
+    apiModeOut: ctx.apiModeIn,
+    stream: false,
+    status: 0,
+    errorCode: null,
+    ttftMs: null,
+    tpsOut: null,
+    latencyMs: 0,
+    inputTokens: 0,
+    cachedInputTokens: 0,
+    outputTokens: 0,
+    ip: ctx.ip,
+    apiKeyName: ctx.apiKeyName,
+    userAgent: ctx.userAgent,
+  });
+  try {
+    const resp = await adapter.chat(
+      resolveProvider(c.provider, ctx.apiModeIn),
+      req,
+    );
+    const latency = Date.now() - started;
+    emitMetrics({
+      requestId: requestId ?? undefined,
+      ts: started,
+      apiKeyId: ctx.apiKeyId,
+      modelId,
+      providerId: c.provider.id,
+      providerName: c.provider.name,
+      realModelId: params.realModelId,
+      apiModeIn: ctx.apiModeIn,
+      apiModeOut: ctx.apiModeIn,
+      stream: false,
+      status: 200,
+      errorCode: null,
+      ttftMs: latency,
+      tpsOut:
+        resp.usage.outputTokens > 0 && latency > 0
+          ? (resp.usage.outputTokens / latency) * 1000
+          : null,
+      latencyMs: latency,
+      inputTokens: resp.usage.inputTokens,
+      cachedInputTokens: resp.usage.cachedInputTokens,
+      outputTokens: resp.usage.outputTokens,
+      ip: ctx.ip,
+      apiKeyName: ctx.apiKeyName,
+      userAgent: ctx.userAgent,
+    });
+    try {
+      if (c.provider.usageMode === "token") {
+        await providerRepo.incrementQuotaUsedByTokens(
+          c.provider.id,
+          resp.usage.inputTokens,
+          resp.usage.cachedInputTokens,
+          resp.usage.outputTokens,
+          c.pm.feeRateInput ?? 1,
+          c.pm.feeRateCachedInput ?? 0.1,
+          c.pm.feeRateOutput ?? 4,
+        );
+      } else {
+        await providerRepo.incrementQuotaUsedByRequest(
+          c.provider.id,
+          c.pm.feeRateInput ?? 1,
+        );
+      }
+    } catch {
+      /* never block */
+    }
+    return { response: resp, provider: c.provider, pm: c.pm, params };
+  } catch (err) {
+    activeRequests.decr(c.provider.id);
+    const status = err instanceof UpstreamError ? err.status : 0;
+    const message = err instanceof Error ? err.message : "Unknown";
+    emitMetrics({
+      requestId: requestId ?? undefined,
+      ts: started,
+      apiKeyId: ctx.apiKeyId,
+      modelId,
+      providerId: c.provider.id,
+      providerName: c.provider.name,
+      realModelId: params.realModelId,
+      apiModeIn: ctx.apiModeIn,
+      apiModeOut: ctx.apiModeIn,
+      stream: false,
+      status: status || 500,
+      errorCode: message.slice(0, 200),
+      ttftMs: null,
+      tpsOut: null,
+      latencyMs: Date.now() - started,
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      ip: ctx.ip,
+      apiKeyName: ctx.apiKeyName,
+      userAgent: ctx.userAgent,
+    });
+    throw new AllCandidatesFailedError(modelId, [
+      { providerId: c.provider.id, status, message },
+    ]);
+  }
+}
+
+export async function dispatchDirectChatStream(
+  providerId: string,
+  modelId: string,
+  messages: NormalizedChatRequest["messages"],
+  user: UserOverrides,
+  ctx: DispatchContext,
+  extra?: Pick<NormalizedChatRequest, "extraParams" | "rawMessages">,
+): Promise<DispatchStreamResult> {
+  const c = await providerModelRepo.findDirect(providerId, modelId);
+  if (!c) {
+    throw new NoCandidateError(
+      `${providerId}/${modelId}`,
+      "provider-model pair not found",
+    );
+  }
+  const model = await modelRepo.findById(modelId);
+  if (!model) throw new NoCandidateError(modelId, "model not found");
+  const params = resolveModelParams(model, c.provider, c.pm, user);
+  const adapter = getAdapter(ctx.apiModeIn);
+  const req: NormalizedChatRequest = {
+    messages,
+    stream: true,
+    realModelId: params.realModelId,
+    maxTokens: params.maxTokens,
+    temperature: params.temperature,
+    topP: params.topP,
+    topK: params.topK,
+    reasoningEffort: params.reasoningEffort,
+    stop: extra?.extraParams?.stop as string[] | undefined,
+    tools: extra?.extraParams?.tools,
+    tool_choice: extra?.extraParams?.tool_choice,
+    extraParams: extra?.extraParams,
+    rawMessages: extra?.rawMessages,
+  };
+  const started = Date.now();
+  activeRequests.incr(c.provider.id);
+  const requestId = emitMetricsStart({
+    ts: started,
+    apiKeyId: ctx.apiKeyId,
+    modelId,
+    providerId: c.provider.id,
+    providerName: c.provider.name,
+    realModelId: params.realModelId,
+    apiModeIn: ctx.apiModeIn,
+    apiModeOut: ctx.apiModeIn,
+    stream: true,
+    status: 0,
+    errorCode: null,
+    ttftMs: null,
+    tpsOut: null,
+    latencyMs: 0,
+    inputTokens: 0,
+    cachedInputTokens: 0,
+    outputTokens: 0,
+    ip: ctx.ip,
+    apiKeyName: ctx.apiKeyName,
+    userAgent: ctx.userAgent,
+  });
+  try {
+    const src = adapter.chatStream(
+      resolveProvider(c.provider, ctx.apiModeIn),
+      req,
+    );
+    const wrapped = wrapStream(src, {
+      started,
+      requestId,
+      ctx,
+      modelId,
+      provider: c.provider,
+      pm: c.pm,
+      params,
+    });
+    return { iterator: wrapped, provider: c.provider, pm: c.pm, params };
+  } catch (err) {
+    activeRequests.decr(c.provider.id);
+    throw err;
+  }
 }

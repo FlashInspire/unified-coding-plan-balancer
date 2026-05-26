@@ -10,6 +10,7 @@ import {
 } from "@/lib/metrics/shardStore";
 
 export interface RecentLogRow {
+  id: number;
   ts: number;
   api_key_id: string;
   api_key_name: string;
@@ -53,7 +54,7 @@ export function recentLogs(
       const db = shardStore.openLog(k);
       const res = db
         .prepare(
-          `SELECT ts, api_key_id, api_key_name, model_id, provider_id,
+          `SELECT id, ts, api_key_id, api_key_name, model_id, provider_id,
                   provider_name, status,
                   latency_ms, ttft_ms, tps_out,
                   input_tokens, cached_input_tokens, output_tokens,

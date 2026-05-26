@@ -125,6 +125,13 @@ async function tick(): Promise<void> {
       monthQuota: true,
       monthQuotaUsed: true,
       monthQuotaResetAt: true,
+      usageMode: true,
+      rollingCacheInputTokensUsed: true,
+      rollingOutputTokensUsed: true,
+      weekCacheInputTokensUsed: true,
+      weekOutputTokensUsed: true,
+      monthCacheInputTokensUsed: true,
+      monthOutputTokensUsed: true,
     },
   });
 
@@ -140,6 +147,8 @@ async function tick(): Promise<void> {
           p.rollingQuotaResetAt.getTime() <= nowTime
         ) {
           updates.rollingQuotaUsed = 0;
+          updates.rollingCacheInputTokensUsed = 0;
+          updates.rollingOutputTokensUsed = 0;
           updates.rollingQuotaResetAt = computeNextResetAt(
             "rolling",
             now,
@@ -159,6 +168,8 @@ async function tick(): Promise<void> {
       if (p.weekQuota != null && p.weekQuota > 0) {
         if (p.weekQuotaResetAt && p.weekQuotaResetAt.getTime() <= nowTime) {
           updates.weekQuotaUsed = 0;
+          updates.weekCacheInputTokensUsed = 0;
+          updates.weekOutputTokensUsed = 0;
           updates.weekQuotaResetAt = computeNextResetAt("week", now);
         } else if (!p.weekQuotaResetAt) {
           updates.weekQuotaResetAt = computeNextResetAt("week", now);
@@ -170,6 +181,8 @@ async function tick(): Promise<void> {
       if (p.monthQuota != null && p.monthQuota > 0) {
         if (p.monthQuotaResetAt && p.monthQuotaResetAt.getTime() <= nowTime) {
           updates.monthQuotaUsed = 0;
+          updates.monthCacheInputTokensUsed = 0;
+          updates.monthOutputTokensUsed = 0;
           updates.monthQuotaResetAt = computeNextResetAt("month", now);
         } else if (!p.monthQuotaResetAt) {
           updates.monthQuotaResetAt = computeNextResetAt("month", now);

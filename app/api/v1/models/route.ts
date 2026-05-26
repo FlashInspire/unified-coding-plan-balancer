@@ -13,7 +13,12 @@ export async function GET(req: Request): Promise<Response> {
   const key = await verifyApiKey(bearer);
   if (!key) return jsonErr(401, "Invalid API key");
 
-  const ids = await providerModelRepo.distinctEnabledModelIds();
+  const url = new URL(req.url);
+  const providerParam = url.searchParams.get("provider");
+
+  const ids = providerParam
+    ? await providerModelRepo.modelIdsForProvider(providerParam)
+    : await providerModelRepo.distinctEnabledModelIds();
   const data = ids.map((id) => ({
     id,
     object: "model",

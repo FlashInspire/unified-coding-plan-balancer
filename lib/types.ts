@@ -42,6 +42,13 @@ export interface ProviderRow {
   weekQuotaResetAt: Date | null;
   monthQuotaResetAt: Date | null;
   rollingHourOffset: number;
+  usageMode: string;
+  rollingCacheInputTokensUsed: number;
+  rollingOutputTokensUsed: number;
+  weekCacheInputTokensUsed: number;
+  weekOutputTokensUsed: number;
+  monthCacheInputTokensUsed: number;
+  monthOutputTokensUsed: number;
   enabled: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -60,7 +67,9 @@ export interface ProviderModelRow {
   reasoningEffortOverride: string | null;
   includeReasoningInRequestOverride: boolean | null;
   weight: number;
-  feeRate: number;
+  feeRateInput: number;
+  feeRateCachedInput: number;
+  feeRateOutput: number;
   enabled: boolean;
   createdAt: Date;
   updatedAt: Date;

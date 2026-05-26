@@ -70,7 +70,7 @@ export default function LogsUsagePage() {
         <div className="text-muted-foreground">Loading...</div>
       ) : tab === "logs" ? (
         <DataTable
-          idKey="ts"
+          idKey="id"
           expandable
           detailRender={(r) => (
             <div className="grid grid-cols-3 gap-3">
@@ -136,11 +136,23 @@ export default function LogsUsagePage() {
               label: "Provider",
               render: (r) => String(r.provider_name ?? r.provider_id ?? "—"),
             },
-            { key: "status", label: "Status" },
+            {
+              key: "status",
+              label: "Status",
+              render: (r) => {
+                const s = Number(r.status);
+                if (s === 0)
+                  return <span className="text-yellow-600">⏳ In-flight</span>;
+                if (s >= 200 && s < 300)
+                  return <span className="text-green-600">{s}</span>;
+                return <span className="text-red-600">{s}</span>;
+              },
+            },
             {
               key: "latency_ms",
               label: "Latency",
-              render: (r) => `${r.latency_ms}ms`,
+              render: (r) =>
+                Number(r.status) === 0 ? "—" : `${r.latency_ms}ms`,
             },
           ]}
         />

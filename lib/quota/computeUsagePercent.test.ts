@@ -81,4 +81,77 @@ describe("computeQuotaUsagePercent", () => {
     // Only weekQuota matters: 40%
     expect(usage).toBe(40);
   });
+
+  // -------------------------------------------------------------------------
+  // Token mode
+  // -------------------------------------------------------------------------
+  describe("token mode", () => {
+    it("sums input + cachedInput + output tokens in token mode", () => {
+      const usage = computeQuotaUsagePercent({
+        usageMode: "token",
+        rollingQuota: 1000,
+        rollingQuotaUsed: 100, // input tokens
+        rollingCacheInputTokensUsed: 50,
+        rollingOutputTokensUsed: 200,
+        weekQuota: null,
+        weekQuotaUsed: 0,
+        monthQuota: null,
+        monthQuotaUsed: 0,
+      });
+
+      // total used = 100 + 50 + 200 = 350 → 35%
+      expect(usage).toBe(35);
+    });
+
+    it("picks tightest dimension in token mode", () => {
+      const usage = computeQuotaUsagePercent({
+        usageMode: "token",
+        rollingQuota: 1000,
+        rollingQuotaUsed: 100,
+        rollingCacheInputTokensUsed: 0,
+        rollingOutputTokensUsed: 0,
+        weekQuota: 500,
+        weekQuotaUsed: 200,
+        weekCacheInputTokensUsed: 100,
+        weekOutputTokensUsed: 150,
+        monthQuota: null,
+        monthQuotaUsed: 0,
+      });
+
+      // rolling: 100/1000 = 10%, week: (200+100+150)/500 = 90% → week dominates
+      expect(usage).toBe(90);
+    });
+
+    it("defaults missing token counters to 0 in token mode", () => {
+      const usage = computeQuotaUsagePercent({
+        usageMode: "token",
+        rollingQuota: 100,
+        rollingQuotaUsed: 50,
+        weekQuota: null,
+        weekQuotaUsed: 0,
+        monthQuota: null,
+        monthQuotaUsed: 0,
+      });
+
+      // Only input: 50/100 = 50%
+      expect(usage).toBe(50);
+    });
+
+    it("request mode ignores token counters", () => {
+      const usage = computeQuotaUsagePercent({
+        usageMode: "request",
+        rollingQuota: 100,
+        rollingQuotaUsed: 10,
+        rollingCacheInputTokensUsed: 999,
+        rollingOutputTokensUsed: 999,
+        weekQuota: null,
+        weekQuotaUsed: 0,
+        monthQuota: null,
+        monthQuotaUsed: 0,
+      });
+
+      // Only rollingQuotaUsed: 10/100 = 10%
+      expect(usage).toBe(10);
+    });
+  });
 });

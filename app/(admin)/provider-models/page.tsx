@@ -43,10 +43,22 @@ const PM_FIELDS = [
     defaultValue: 1,
   },
   {
-    name: "feeRate",
-    label: "Fee Rate",
+    name: "feeRateInput",
+    label: "Fee Rate (Input)",
     type: "number" as const,
     defaultValue: 1,
+  },
+  {
+    name: "feeRateCachedInput",
+    label: "Fee Rate (Cached Input)",
+    type: "number" as const,
+    defaultValue: 0.1,
+  },
+  {
+    name: "feeRateOutput",
+    label: "Fee Rate (Output)",
+    type: "number" as const,
+    defaultValue: 4,
   },
   {
     name: "enabled",
@@ -153,7 +165,9 @@ export default function ProviderModelsPage() {
                   { key: "modelId", label: "Model" },
                   { key: "realModelId", label: "Real Model" },
                   { key: "weight", label: "W" },
-                  { key: "feeRate", label: "Rate" },
+                  { key: "feeRateInput", label: "Rate In" },
+                  { key: "feeRateCachedInput", label: "Rate Cache" },
+                  { key: "feeRateOutput", label: "Rate Out" },
                   {
                     key: "enabled",
                     label: "Enabled",

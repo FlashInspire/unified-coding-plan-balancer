@@ -59,6 +59,16 @@ const PROVIDER_FIELDS = [
     defaultValue: 0,
   },
   {
+    name: "usageMode",
+    label: "Usage Mode",
+    type: "select" as const,
+    options: [
+      { value: "request", label: "Request" },
+      { value: "token", label: "Token" },
+    ],
+    defaultValue: "request",
+  },
+  {
     name: "enabled",
     label: "Enabled",
     type: "boolean" as const,
@@ -68,7 +78,8 @@ const PROVIDER_FIELDS = [
 
 function formatQuotaCompact(used: number, quota: number | null): string {
   if (quota == null || quota <= 0) return `${used.toFixed(0)}/∞`;
-  return `${used.toFixed(0)}/${quota}`;
+  const pct = Math.min(100, (used / quota) * 100);
+  return `${used.toFixed(0)}/${quota} (${pct.toFixed(0)}%)`;
 }
 
 function formatDuration(ms: number): string {
@@ -204,7 +215,7 @@ export default function ProvidersPage() {
         {/* Quota details */}
         <div className="border rounded-md p-3 space-y-2 bg-muted/30">
           <div className="font-medium text-xs uppercase tracking-wide text-muted-foreground">
-            Quota
+            Quota {p.usageMode === "token" ? "(Token Mode)" : "(Request Mode)"}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <QuotaDetail
@@ -217,12 +228,28 @@ export default function ProvidersPage() {
               suffix={
                 p.rollingHourOffset ? ` (offset: ${p.rollingHourOffset}h)` : ""
               }
+              tokenExtra={
+                p.usageMode === "token"
+                  ? {
+                      cachedInput: p.rollingCacheInputTokensUsed,
+                      output: p.rollingOutputTokensUsed,
+                    }
+                  : undefined
+              }
             />
             <QuotaDetail
               label="Weekly"
               used={p.weekQuotaUsed}
               quota={p.weekQuota}
               resetAt={p.weekQuotaResetAt ? new Date(p.weekQuotaResetAt) : null}
+              tokenExtra={
+                p.usageMode === "token"
+                  ? {
+                      cachedInput: p.weekCacheInputTokensUsed,
+                      output: p.weekOutputTokensUsed,
+                    }
+                  : undefined
+              }
             />
             <QuotaDetail
               label="Monthly"
@@ -230,6 +257,14 @@ export default function ProvidersPage() {
               quota={p.monthQuota}
               resetAt={
                 p.monthQuotaResetAt ? new Date(p.monthQuotaResetAt) : null
+              }
+              tokenExtra={
+                p.usageMode === "token"
+                  ? {
+                      cachedInput: p.monthCacheInputTokensUsed,
+                      output: p.monthOutputTokensUsed,
+                    }
+                  : undefined
               }
             />
           </div>
@@ -317,26 +352,40 @@ function QuotaDetail({
   quota,
   resetAt,
   suffix,
+  tokenExtra,
 }: {
   label: string;
   used: number;
   quota: number | null;
   resetAt: Date | null;
   suffix?: string;
+  tokenExtra?: { cachedInput: number; output: number };
 }) {
+  const totalUsed = tokenExtra
+    ? used + tokenExtra.cachedInput + tokenExtra.output
+    : used;
   const percent =
-    quota != null && quota > 0 ? Math.min(100, (used / quota) * 100) : null;
+    quota != null && quota > 0
+      ? Math.min(100, (totalUsed / quota) * 100)
+      : null;
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-xs">
         <span className="font-medium">{label}</span>
         <span className="text-muted-foreground">
           {quota != null && quota > 0
-            ? `${used.toFixed(0)} / ${quota}`
-            : `${used.toFixed(0)} / ∞`}
+            ? `${totalUsed.toFixed(0)} / ${quota} (${percent?.toFixed(0) ?? 0}%)`
+            : `${totalUsed.toFixed(0)} / ∞`}
           {suffix && <span className="text-muted-foreground/70">{suffix}</span>}
         </span>
       </div>
+      {tokenExtra && (
+        <div className="text-[10px] text-muted-foreground flex gap-2">
+          <span>In: {used.toFixed(0)}</span>
+          <span>Cache: {tokenExtra.cachedInput.toFixed(0)}</span>
+          <span>Out: {tokenExtra.output.toFixed(0)}</span>
+        </div>
+      )}
       {percent != null && (
         <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
           <div

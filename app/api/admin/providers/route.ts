@@ -19,6 +19,7 @@ const createSchema = z
     weekQuotaUsed: z.number().int().optional(),
     monthQuotaUsed: z.number().int().optional(),
     rollingHourOffset: z.number().int().min(0).max(23).optional(),
+    usageMode: z.enum(["request", "token"]).optional(),
     weight: z.number().int().min(0).optional(),
     enabled: z.boolean().optional(),
   })

@@ -18,7 +18,9 @@ const createSchema = z.object({
     .optional(),
   includeReasoningInRequestOverride: z.boolean().nullable().optional(),
   weight: z.number().int().min(0).optional(),
-  feeRate: z.number().min(0).optional(),
+  feeRateInput: z.number().min(0).optional(),
+  feeRateCachedInput: z.number().min(0).optional(),
+  feeRateOutput: z.number().min(0).optional(),
   enabled: z.boolean().optional(),
 });
 

@@ -16,6 +16,7 @@ export interface ProviderInput {
   weekQuotaUsed?: number;
   monthQuotaUsed?: number;
   rollingHourOffset?: number;
+  usageMode?: string;
   enabled?: boolean;
 }
 
@@ -33,6 +34,7 @@ export interface ProviderPatch {
   weekQuotaUsed?: number;
   monthQuotaUsed?: number;
   rollingHourOffset?: number;
+  usageMode?: string;
   enabled?: boolean;
 }
 
@@ -63,6 +65,7 @@ export const providerRepo = {
         weekQuotaUsed: input.weekQuotaUsed ?? 0,
         monthQuotaUsed: input.monthQuotaUsed ?? 0,
         rollingHourOffset: input.rollingHourOffset ?? 0,
+        usageMode: input.usageMode ?? "request",
         enabled: input.enabled ?? true,
       },
     });
@@ -108,6 +111,9 @@ export const providerRepo = {
         ...(patch.rollingHourOffset !== undefined
           ? { rollingHourOffset: patch.rollingHourOffset }
           : {}),
+        ...(patch.usageMode !== undefined
+          ? { usageMode: patch.usageMode }
+          : {}),
         ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
       },
     });
@@ -122,6 +128,33 @@ export const providerRepo = {
       SET rollingQuotaUsed = rollingQuotaUsed + ${amount},
           weekQuotaUsed    = weekQuotaUsed + ${amount},
           monthQuotaUsed   = monthQuotaUsed + ${amount}
+      WHERE id = ${id}
+    `;
+  },
+
+  async incrementQuotaUsedByTokens(
+    id: string,
+    inputTokens: number,
+    cachedInputTokens: number,
+    outputTokens: number,
+    feeRateInput: number,
+    feeRateCachedInput: number,
+    feeRateOutput: number,
+  ): Promise<void> {
+    const inputCost = inputTokens * feeRateInput;
+    const cachedCost = cachedInputTokens * feeRateCachedInput;
+    const outputCost = outputTokens * feeRateOutput;
+    await prisma.$executeRaw`
+      UPDATE Provider
+      SET rollingQuotaUsed            = rollingQuotaUsed + ${inputCost},
+          rollingCacheInputTokensUsed = rollingCacheInputTokensUsed + ${cachedCost},
+          rollingOutputTokensUsed     = rollingOutputTokensUsed + ${outputCost},
+          weekQuotaUsed               = weekQuotaUsed + ${inputCost},
+          weekCacheInputTokensUsed    = weekCacheInputTokensUsed + ${cachedCost},
+          weekOutputTokensUsed        = weekOutputTokensUsed + ${outputCost},
+          monthQuotaUsed              = monthQuotaUsed + ${inputCost},
+          monthCacheInputTokensUsed   = monthCacheInputTokensUsed + ${cachedCost},
+          monthOutputTokensUsed       = monthOutputTokensUsed + ${outputCost}
       WHERE id = ${id}
     `;
   },

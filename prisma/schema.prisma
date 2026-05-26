@@ -37,26 +37,36 @@ model Model {
 // are both optional; at least one pair must be configured.
 // -----------------------------------------------------------------------------
 model Provider {
-  id                  String    @id // e.g. "openai-official", "azure-eu"
-  name                String
-  baseUrlOpenai       String? // OpenAI-compatible endpoint URL
-  apiKeyOpenai        String? // API key for OpenAI endpoint (plaintext; admin-only access)
-  baseUrlAnthropic    String? // Anthropic-compatible endpoint URL
-  apiKeyAnthropic     String? // API key for Anthropic endpoint
-  headersTemplate     String // JSON-encoded extra headers template
-  rollingQuota        Int?
-  weekQuota           Int?
-  monthQuota          Int?
-  rollingQuotaUsed    Float     @default(0.0)
-  weekQuotaUsed       Float     @default(0.0)
-  monthQuotaUsed      Float     @default(0.0)
-  rollingQuotaResetAt DateTime?
-  weekQuotaResetAt    DateTime?
-  monthQuotaResetAt   DateTime?
-  rollingHourOffset   Int       @default(0) // 0–23; rolling reset snaps to hours ≡ offset (mod 5)
-  enabled             Boolean   @default(true)
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  id                          String    @id // e.g. "openai-official", "azure-eu"
+  name                        String
+  baseUrlOpenai               String? // OpenAI-compatible endpoint URL
+  apiKeyOpenai                String? // API key for OpenAI endpoint (plaintext; admin-only access)
+  baseUrlAnthropic            String? // Anthropic-compatible endpoint URL
+  apiKeyAnthropic             String? // API key for Anthropic endpoint
+  headersTemplate             String // JSON-encoded extra headers template
+  rollingQuota                Int?
+  weekQuota                   Int?
+  monthQuota                  Int?
+  rollingQuotaUsed            Float     @default(0.0)
+  weekQuotaUsed               Float     @default(0.0)
+  monthQuotaUsed              Float     @default(0.0)
+  rollingQuotaResetAt         DateTime?
+  weekQuotaResetAt            DateTime?
+  monthQuotaResetAt           DateTime?
+  rollingHourOffset           Int       @default(0) // 0–23; rolling reset snaps to hours ≡ offset (mod 5)
+  // Usage mode: "request" = count requests (default), "token" = count tokens
+  usageMode                   String    @default("request")
+  // Token-mode counters (only meaningful when usageMode = "token").
+  // *QuotaUsed fields are reused as "input tokens used" in token mode.
+  rollingCacheInputTokensUsed Float     @default(0.0)
+  rollingOutputTokensUsed     Float     @default(0.0)
+  weekCacheInputTokensUsed    Float     @default(0.0)
+  weekOutputTokensUsed        Float     @default(0.0)
+  monthCacheInputTokensUsed   Float     @default(0.0)
+  monthOutputTokensUsed       Float     @default(0.0)
+  enabled                     Boolean   @default(true)
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
 
   providerModels ProviderModel[]
   quotaSnapshot  ProviderQuotaSnapshot?
@@ -81,9 +91,12 @@ model ProviderModel {
   includeReasoningInRequestOverride Boolean?
 
   // Routing weight for ties in remaining quota.
-  weight  Int     @default(1)
-  feeRate Float   @default(1.0)
-  enabled Boolean @default(true)
+  weight             Int     @default(1)
+  // Fee rates: per-request (request mode) or per-token costs (token mode).
+  feeRateInput       Float   @default(1.0)
+  feeRateCachedInput Float   @default(0.1)
+  feeRateOutput      Float   @default(4.0)
+  enabled            Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -14,7 +14,9 @@ export interface ProviderModelInput {
   reasoningEffortOverride?: string | null;
   includeReasoningInRequestOverride?: boolean | null;
   weight?: number;
-  feeRate?: number;
+  feeRateInput?: number;
+  feeRateCachedInput?: number;
+  feeRateOutput?: number;
   enabled?: boolean;
 }
 
@@ -53,7 +55,9 @@ export const providerModelRepo = {
         includeReasoningInRequestOverride:
           input.includeReasoningInRequestOverride ?? null,
         weight: input.weight ?? 1,
-        feeRate: input.feeRate ?? 1.0,
+        feeRateInput: input.feeRateInput ?? 1.0,
+        feeRateCachedInput: input.feeRateCachedInput ?? 0.1,
+        feeRateOutput: input.feeRateOutput ?? 4.0,
         enabled: input.enabled ?? true,
       },
     });
@@ -76,6 +80,16 @@ export const providerModelRepo = {
         provider: { enabled: true },
         model: { enabled: true },
       },
+      select: { modelId: true },
+      distinct: ["modelId"],
+    });
+    return rows.map((r) => r.modelId);
+  },
+
+  /** List model_ids for a specific provider (including disabled provider/pm). */
+  async modelIdsForProvider(providerId: string): Promise<string[]> {
+    const rows = await prisma.providerModel.findMany({
+      where: { providerId },
       select: { modelId: true },
       distinct: ["modelId"],
     });
@@ -118,6 +132,33 @@ export const providerModelRepo = {
         activeRequests: activeRequests.get(r.provider.id),
       };
     });
+  },
+
+  /**
+   * Find a specific provider-model pair directly, bypassing enabled checks.
+   * Used for `provider/model` direct routing.
+   */
+  async findDirect(
+    providerId: string,
+    modelId: string,
+  ): Promise<RoutingCandidate | null> {
+    const row = await prisma.providerModel.findFirst({
+      where: { providerId, modelId },
+      include: {
+        provider: { include: { quotaSnapshot: true } },
+      },
+    });
+    if (!row) return null;
+    const snap = row.provider.quotaSnapshot;
+    const { quotaSnapshot, ...providerOnly } = row.provider;
+    void quotaSnapshot;
+    return {
+      pm: stripProvider(row),
+      provider: providerOnly as unknown as ProviderRow,
+      usagePercent: snap?.usagePercent ?? null,
+      healthy: snap?.healthy ?? true,
+      activeRequests: activeRequests.get(row.provider.id),
+    };
   },
 };
 

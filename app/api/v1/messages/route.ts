@@ -16,6 +16,8 @@ import {
 import {
   dispatchChat,
   dispatchChatStream,
+  dispatchDirectChat,
+  dispatchDirectChatStream,
   NoCandidateError,
   AllCandidatesFailedError,
   type DispatchContext,
@@ -73,23 +75,39 @@ export async function POST(req: Request): Promise<Response> {
     Object.entries(rawBody).filter(([k]) => !ROUTING_KEYS.has(k)),
   );
 
+  // Detect direct provider/model routing (format: "provider-id/model-id")
+  const modelStr = rawBody.model as string;
+  const slashIdx = modelStr.indexOf("/");
+  const directProviderId = slashIdx > 0 ? modelStr.slice(0, slashIdx) : null;
+  const directModelId = slashIdx > 0 ? modelStr.slice(slashIdx + 1) : null;
+
   const stream = rawBody.stream === true;
 
   try {
     if (stream) {
-      const result = await dispatchChatStream(
-        rawBody.model,
-        messages,
-        overrides,
-        ctx,
-        {
-          extraParams,
-          rawMessages: {
-            data: rawBody.messages as unknown[],
-            apiMode: "anthropic",
-          },
-        },
-      );
+      const result =
+        directProviderId && directModelId
+          ? await dispatchDirectChatStream(
+              directProviderId,
+              directModelId,
+              messages,
+              overrides,
+              ctx,
+              {
+                extraParams,
+                rawMessages: {
+                  data: rawBody.messages as unknown[],
+                  apiMode: "anthropic",
+                },
+              },
+            )
+          : await dispatchChatStream(rawBody.model, messages, overrides, ctx, {
+              extraParams,
+              rawMessages: {
+                data: rawBody.messages as unknown[],
+                apiMode: "anthropic",
+              },
+            });
       const encoder = new TextEncoder();
       const readableStream = new ReadableStream({
         async start(controller) {
@@ -199,19 +217,29 @@ export async function POST(req: Request): Promise<Response> {
         },
       });
     } else {
-      const result = await dispatchChat(
-        rawBody.model,
-        messages,
-        overrides,
-        ctx,
-        {
-          extraParams,
-          rawMessages: {
-            data: rawBody.messages as unknown[],
-            apiMode: "anthropic",
-          },
-        },
-      );
+      const result =
+        directProviderId && directModelId
+          ? await dispatchDirectChat(
+              directProviderId,
+              directModelId,
+              messages,
+              overrides,
+              ctx,
+              {
+                extraParams,
+                rawMessages: {
+                  data: rawBody.messages as unknown[],
+                  apiMode: "anthropic",
+                },
+              },
+            )
+          : await dispatchChat(rawBody.model, messages, overrides, ctx, {
+              extraParams,
+              rawMessages: {
+                data: rawBody.messages as unknown[],
+                apiMode: "anthropic",
+              },
+            });
       const resp = buildAnthropicNonStreamResponse({
         modelId: rawBody.model as string,
         text: result.response.text,
