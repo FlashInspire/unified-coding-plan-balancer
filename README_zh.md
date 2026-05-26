@@ -14,17 +14,18 @@
 
 ## ⚠️ 已知问题
 
-- **API 协议转换仍处于实验阶段。** OpenAI 与 Anthropic 格式之间的双向协议转换（包括流式 chunk）仍在积极开发中，您可能会在以下场景遇到问题：
-  - 跨协议的 Tool Calls / Function Calling
-  - Reasoning（`thinking`）块的转换
-  - 非标准消息内容类型（如图片输入）
-  - 特定服务商组合下的 Stream chunk 重组
-
-  如果遇到转换 Bug，请附带请求/响应 payload 提交 Issue。
-
-- **仅 OpenAI 兼容接口（`/v1/chat/completions`）经过完整测试。** Anthropic 兼容接口（`/v1/messages`）以尽力提供的方式支持，无法保证在所有场景下正常工作。
-
 - **Output TPS（每秒输出 Token 数）仅供参考。** 由于无法获取上游服务商的后端指标，TPS 完全基于墙钟时间和输出 Token 数估算，仅作为粗略参考，非精确测量。
+
+---
+
+## ⚠️ 重要提示：协议匹配
+
+> **本网关不进行跨协议转换。** 客户端协议必须与上游服务商的协议一致。
+>
+> 如果你使用 **Anthropic 协议客户端**（如 Anthropic SDK、Claude Code），上游服务商**必须**配置为 `apiMode: anthropic`。
+> 如果你使用 **OpenAI 协议客户端**（如 OpenAI SDK），上游服务商**必须**配置为 `apiMode: openai`。
+>
+> 混合协议（如 Anthropic 客户端 → OpenAI 上游）**不受支持**，会导致请求失败。
 
 ---
 
@@ -36,10 +37,9 @@ Unified Coding Plan Balancer 是一个部署在你的应用和多个上游 AI �
 ┌──────────────────┐       ┌──────────────────────────────┐       ┌──────────────────────┐
 │  你的应用        │──────▶│   Unified Coding Plan Balancer  │──────▶│  上游 AI 服务商      │
 │  (OpenAI SDK)    │       │   ┌────────────────────────┐ │       │  OpenAI / Anthropic  │
-│  (Anthropic SDK) │◀──────│   │ 协议自动互转           │ │◀──────│  Azure / OpenRouter  │
-│  (curl / httpie) │       │   │ 配额感知路由           │ │       │  火山引擎 / …        │
-└──────────────────┘       │   │ 流式指标采集           │ │       └──────────────────────┘
-                           │   │ 内置管理后台           │ │
+│  (Anthropic SDK) │◀──────│   │ 配额感知路由           │ │◀──────│  Azure / OpenRouter  │
+│  (curl / httpie) │       │   │ 流式指标采集           │ │       │  火山引擎 / …        │
+└──────────────────┘       │   │ 内置管理后台           │ │       └──────────────────────┘
                            │   └────────────────────────┘ │
                            └──────────────────────────────┘
 ```
@@ -48,7 +48,7 @@ Unified Coding Plan Balancer 是一个部署在你的应用和多个上游 AI �
 
 - 🔑 **一个 API Key** 访问所有服务商
 - 🔄 **自动故障转移** —— 服务商宕机或限流时，流量自动切换
-- 🌐 **协议互转** —— 用 OpenAI SDK 调用 Anthropic 模型，反之亦然
+- 🌐 **双协议支持** —— 同时暴露 OpenAI 和 Anthropic 兼容的 API 端点
 - 📊 **完整可观测性** —— 逐请求日志、TTFT、TPS、Token 明细
 - 🖥️ **内置管理后台** —— 可视化管理服务商、模型、API Key，查看用量仪表盘
 
@@ -58,14 +58,14 @@ Unified Coding Plan Balancer 是一个部署在你的应用和多个上游 AI �
 
 ### 🔀 双协议支持
 
-同时暴露 **OpenAI** 和 **Anthropic** 兼容的 API 端点。使用任一协议的客户端都可以访问任意上游模型 —— 网关自动完成双向协议转换（包括流式 chunk）。
+同时暴露 **OpenAI** 和 **Anthropic** 兼容的 API 端点。客户端必须使用与其协议匹配的端点，上游服务商也必须配置对应的 `apiMode`。
 
-| 客户端协议 | 上游协议  | 处理方式    |
-| :--------: | :-------: | ----------- |
-|   OpenAI   |  OpenAI   | 直接透传    |
-|   OpenAI   | Anthropic | 自动互转 ↑↓ |
-| Anthropic  | Anthropic | 直接透传    |
-| Anthropic  |  OpenAI   | 自动互转 ↑↓ |
+| 客户端协议 | 上游协议  | 处理方式 |
+| :--------: | :-------: | -------- |
+|   OpenAI   |  OpenAI   | 直接透传 |
+| Anthropic  | Anthropic | 直接透传 |
+
+> ⚠️ **不支持跨协议路由。** OpenAI 客户端不能调用 Anthropic 上游，反之亦然。
 
 ### 🎯 配额感知智能路由
 

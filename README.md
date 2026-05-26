@@ -14,17 +14,18 @@
 
 ## ⚠️ Known Issues
 
-- **API translation is experimental.** The bidirectional protocol translation between OpenAI and Anthropic formats (including streaming chunks) is still under active development. You may encounter edge cases with:
-  - Tool calls / function calling across protocols
-  - Reasoning (`thinking`) block translation
-  - Non-standard message content types (e.g., image inputs)
-  - Stream chunk reassembly in certain provider combinations
-
-  If you hit a translation bug, please open an issue with the request/response payload.
-
-- **Only the OpenAI-compatible endpoint (`/v1/chat/completions`) has been thoroughly tested.** The Anthropic-compatible endpoint (`/v1/messages`) is provided on a best-effort basis and may not work correctly in all scenarios.
-
 - **Output TPS (Tokens Per Second) is an estimate.** Without backend metrics from the upstream provider, TPS is calculated purely from wall-clock time and output token count. Use it as a rough reference, not an exact measurement.
+
+---
+
+## ⚠️ Important: Protocol Matching
+
+> **This gateway does NOT perform cross-protocol translation.** The client protocol must match the upstream provider's protocol.
+>
+> If you are using an **Anthropic-protocol client** (e.g., Anthropic SDK, Claude Code), your upstream providers **must** be configured with `apiMode: anthropic`.
+> If you are using an **OpenAI-protocol client** (e.g., OpenAI SDK), your upstream providers **must** be configured with `apiMode: openai`.
+>
+> Mixing protocols (e.g., Anthropic client → OpenAI upstream) is **not supported** and will result in errors.
 
 ---
 
@@ -36,10 +37,9 @@ Unified Coding Plan Balancer sits between your applications and multiple upstrea
 ┌──────────────────┐       ┌──────────────────────────────┐       ┌──────────────────────┐
 │  Your Apps       │──────▶│   Unified Coding Plan Balancer  │──────▶│  Upstream Providers  │
 │  (OpenAI SDK)    │       │   ┌────────────────────────┐ │       │  OpenAI / Anthropic  │
-│  (Anthropic SDK) │◀──────│   │ Protocol Translation   │ │◀──────│  Azure / OpenRouter  │
-│  (curl / httpie) │       │   │ Quota-Aware Routing    │ │       │  Volcengine / …      │
-└──────────────────┘       │   │ Streaming Metrics      │ │       └──────────────────────┘
-                           │   │ Admin Dashboard        │ │
+│  (Anthropic SDK) │◀──────│   │ Quota-Aware Routing    │ │◀──────│  Azure / OpenRouter  │
+│  (curl / httpie) │       │   │ Streaming Metrics      │ │       │  Volcengine / …      │
+└──────────────────┘       │   │ Admin Dashboard        │ │       └──────────────────────┘
                            │   └────────────────────────┘ │
                            └──────────────────────────────┘
 ```
@@ -48,7 +48,7 @@ Unified Coding Plan Balancer sits between your applications and multiple upstrea
 
 - 🔑 **One API key** to access all providers
 - 🔄 **Automatic failover** — when a provider is down or rate-limited, traffic shifts instantly
-- 🌐 **Protocol translation** — use OpenAI SDK to call Anthropic models and vice versa
+- 🌐 **Dual protocol support** — expose both OpenAI and Anthropic compatible endpoints simultaneously
 - 📊 **Full observability** — per-request logs, TTFT, TPS, token breakdowns
 - 🖥️ **Built-in admin UI** — manage providers, models, keys, and view dashboards
 
@@ -58,14 +58,14 @@ Unified Coding Plan Balancer sits between your applications and multiple upstrea
 
 ### 🔀 Dual Protocol Support
 
-Expose both **OpenAI** and **Anthropic** compatible endpoints simultaneously. Clients using either protocol can access any upstream model — the gateway handles automatic bidirectional protocol translation (including streaming chunks).
+Expose both **OpenAI** and **Anthropic** compatible endpoints simultaneously. Clients must use the endpoint matching their protocol, and upstream providers must be configured with the corresponding `apiMode`.
 
 | Client (in) | Provider (out) | Handling           |
 | :---------: | :------------: | ------------------ |
 |   OpenAI    |     OpenAI     | Direct passthrough |
-|   OpenAI    |   Anthropic    | Auto translate ↑↓  |
 |  Anthropic  |   Anthropic    | Direct passthrough |
-|  Anthropic  |     OpenAI     | Auto translate ↑↓  |
+
+> ⚠️ **Cross-protocol routing is not supported.** OpenAI clients cannot call Anthropic providers and vice versa.
 
 ### 🎯 Quota-Aware Smart Routing
 
