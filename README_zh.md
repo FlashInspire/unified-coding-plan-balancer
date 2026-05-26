@@ -104,6 +104,8 @@ Unified Coding Plan Balancer 是一个部署在你的应用和多个上游 AI �
 - **用量仪表盘**：交互式图表 —— TTFT/TPS 趋势、按模型/Key/服务商的 Token 分布
 - **请求日志**：可搜索、可按 Key/模型/服务商/状态筛选
 - **配额面板**：实时查看各服务商配额快照，支持手动刷新
+- **用户管理**：管理管理员账号（创建、启用/停用）
+- **系统设置**：全局网关配置
 
 ---
 
@@ -207,7 +209,7 @@ curl http://localhost:3000/v1/messages \
 用户请求 > ProviderModel 覆盖 > Model 默认值
 ```
 
-可覆盖：`temperature`、`top_p`、`top_k`、`max_tokens`（有上限）、`reasoning_effort`
+可覆盖：`temperature`、`top_p`、`top_k`、`max_tokens`（有上限）、`reasoning_effort`、`include_reasoning`
 
 不可覆盖：`context_length`、`real_model_id`
 
@@ -227,7 +229,13 @@ curl http://localhost:3000/v1/messages \
 | `LOG_RETENTION_DAYS`        | `30`                    | 请求日志保留天数                           |
 | `STAT_RETENTION_MONTHS`     | `24`                    | 聚合统计数据保留月数                       |
 | `QUOTA_REFRESH_INTERVAL_MS` | `60000`                 | 配额刷新间隔（毫秒）                       |
+| `QUOTA_REFRESH_CONCURRENCY` | `4`                     | 配额刷新最大并发请求数                     |
+| `QUOTA_EXHAUST_THRESHOLD`   | `100`                   | 使用率超过此阈值的服务商将被跳过           |
 | `METRICS_FLUSH_INTERVAL_MS` | `1000`                  | 指标缓冲刷盘间隔（毫秒）                   |
+| `METRICS_FLUSH_BATCH_SIZE`  | `500`                   | 每次刷盘最大写入行数                       |
+| `METRICS_BUFFER_MAX`        | `5000`                  | 内存指标缓冲区最大容量                     |
+| `SQLITE_POOL_MAX`           | `16`                    | SQLite 连接池最大连接数                    |
+| `NEXTAUTH_URL_INTERNAL`     | —                       | 内部 Base URL（反向代理场景）              |
 | `DATA_DIR`                  | `./data`                | 数据目录路径                               |
 
 ### 数据目录结构
@@ -270,11 +278,11 @@ app/
 │   └── admin/          # 管理 API（受 session 保护）
 lib/
 ├── adapters/           # OpenAI & Anthropic 协议适配器 + 双向转换
-├── routing/            # 参数解析、候选排序、请求调度
-├── quota/              # 各服务商配额查询处理器
+├── routing/            # 参数解析、候选排序、请求调度、活跃请求追踪
+├── quota/              # 使用率计算、配额重置调度器
 ├── metrics/            # 缓冲、分片存储、刷盘、聚合、跨分片查询
 ├── repositories/       # Prisma 数据访问层
-├── auth/               # NextAuth + API Key 鉴权
+├── auth/               # NextAuth + API Key 鉴权 + Edge 配置
 └── workers/            # 后台 Worker（配额、刷盘、聚合、归档）
 prisma/
 ├── schema.prisma       # 数据库 Schema

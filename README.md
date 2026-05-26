@@ -104,6 +104,8 @@ Expose both **OpenAI** and **Anthropic** compatible endpoints simultaneously. Cl
 - **Usage**: interactive charts — TTFT/TPS trends, token breakdown by model/key/provider
 - **Logs**: searchable request log with filtering by key, model, provider, status
 - **Quota**: live snapshot of each provider's quota with manual refresh
+- **Users**: manage admin accounts (create, enable/disable)
+- **Settings**: global gateway configuration
 
 ---
 
@@ -207,7 +209,7 @@ curl http://localhost:3000/v1/messages \
 User Request > ProviderModel Override > Model Default
 ```
 
-Overridable: `temperature`, `top_p`, `top_k`, `max_tokens` (capped), `reasoning_effort`
+Overridable: `temperature`, `top_p`, `top_k`, `max_tokens` (capped), `reasoning_effort`, `include_reasoning`
 
 Not overridable: `context_length`, `real_model_id`
 
@@ -226,8 +228,14 @@ Not overridable: `context_length`, `real_model_id`
 | `ADMIN_INIT_PASSWORD`       | —                       | **Required.** Initial admin password      |
 | `LOG_RETENTION_DAYS`        | `30`                    | Days to keep request logs                 |
 | `STAT_RETENTION_MONTHS`     | `24`                    | Months to keep aggregated stats           |
-| `QUOTA_REFRESH_INTERVAL_MS` | `60000`                 | Quota refresh interval                    |
-| `METRICS_FLUSH_INTERVAL_MS` | `1000`                  | Metrics buffer flush interval             |
+| `QUOTA_REFRESH_INTERVAL_MS` | `60000`                 | Quota refresh interval (ms)               |
+| `QUOTA_REFRESH_CONCURRENCY` | `4`                     | Max concurrent quota refresh requests     |
+| `QUOTA_EXHAUST_THRESHOLD`   | `100`                   | Usage % above which provider is skipped   |
+| `METRICS_FLUSH_INTERVAL_MS` | `1000`                  | Metrics buffer flush interval (ms)        |
+| `METRICS_FLUSH_BATCH_SIZE`  | `500`                   | Max rows per flush batch                  |
+| `METRICS_BUFFER_MAX`        | `5000`                  | Max in-memory metrics buffer size         |
+| `SQLITE_POOL_MAX`           | `16`                    | Max SQLite connection pool size           |
+| `NEXTAUTH_URL_INTERNAL`     | —                       | Internal base URL (behind reverse proxy)  |
 | `DATA_DIR`                  | `./data`                | Data directory                            |
 
 ### Data Layout
@@ -270,11 +278,11 @@ app/
 │   └── admin/          # Admin API (session-protected)
 lib/
 ├── adapters/           # OpenAI & Anthropic protocol adapters + translation
-├── routing/            # Parameter resolution, candidate selection, dispatch
-├── quota/              # Quota handlers per provider type
+├── routing/            # Parameter resolution, candidate selection, dispatch, active request tracking
+├── quota/              # Usage percentage computation, quota reset scheduler
 ├── metrics/            # Buffer, shard store, flusher, aggregator, query router
 ├── repositories/       # Prisma data access layer
-├── auth/               # NextAuth + API key auth
+├── auth/               # NextAuth + API key auth + edge config
 └── workers/            # Background workers (quota, flush, aggregate, archive)
 prisma/
 ├── schema.prisma       # Database schema
