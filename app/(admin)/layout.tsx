@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { SignOutButton } from "@/app/(admin)/_components/sign-out-button";
 
 export const metadata: Metadata = {
   title: "Unified Coding Plan Balancer — Admin",
@@ -29,14 +30,7 @@ export default function AdminLayout({
             <Link href="/settings">Settings</Link>
           </div>
           <div className="ml-auto">
-            <form action="/api/auth/signout" method="POST">
-              <button
-                type="submit"
-                className="text-sm text-muted-foreground hover:text-foreground"
-              >
-                Sign out
-              </button>
-            </form>
+            <SignOutButton />
           </div>
         </div>
       </nav>
