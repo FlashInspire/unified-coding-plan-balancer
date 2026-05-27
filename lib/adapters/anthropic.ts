@@ -87,12 +87,14 @@ export class AnthropicAdapter implements ProviderAdapter {
   async chat(
     provider: ResolvedProvider,
     req: NormalizedChatRequest,
+    signal?: AbortSignal,
   ): Promise<NormalizedChatResponse> {
     const url = joinUrl(provider.baseUrl, "/v1/messages");
     const res = await fetch(url, {
       method: "POST",
       headers: headers(provider),
       body: JSON.stringify(buildBody(req, false)),
+      signal,
     });
     if (!res.ok) {
       const text = await res.text();
@@ -149,12 +151,14 @@ export class AnthropicAdapter implements ProviderAdapter {
   async *chatStream(
     provider: ResolvedProvider,
     req: NormalizedChatRequest,
+    signal?: AbortSignal,
   ): AsyncGenerator<NormalizedChunk> {
     const url = joinUrl(provider.baseUrl, "/v1/messages");
     const res = await fetch(url, {
       method: "POST",
       headers: headers(provider),
       body: JSON.stringify(buildBody(req, true)),
+      signal,
     });
     if (!res.ok) {
       const text = await res.text();

@@ -48,6 +48,11 @@ const PROVIDER_FIELDS = [
     type: "number" as const,
   },
   {
+    name: "rollingQuotaUsed",
+    label: "Rolling Quota Used",
+    type: "number" as const,
+  },
+  {
     name: "weekQuotaUsed",
     label: "Week Quota Used",
     type: "number" as const,
@@ -60,6 +65,36 @@ const PROVIDER_FIELDS = [
   {
     name: "monthQuotaUsed",
     label: "Month Quota Used",
+    type: "number" as const,
+  },
+  {
+    name: "rollingCacheInputTokensUsed",
+    label: "Rolling Cache Input Tokens Used",
+    type: "number" as const,
+  },
+  {
+    name: "rollingOutputTokensUsed",
+    label: "Rolling Output Tokens Used",
+    type: "number" as const,
+  },
+  {
+    name: "weekCacheInputTokensUsed",
+    label: "Week Cache Input Tokens Used",
+    type: "number" as const,
+  },
+  {
+    name: "weekOutputTokensUsed",
+    label: "Week Output Tokens Used",
+    type: "number" as const,
+  },
+  {
+    name: "monthCacheInputTokensUsed",
+    label: "Month Cache Input Tokens Used",
+    type: "number" as const,
+  },
+  {
+    name: "monthOutputTokensUsed",
+    label: "Month Output Tokens Used",
     type: "number" as const,
   },
   {

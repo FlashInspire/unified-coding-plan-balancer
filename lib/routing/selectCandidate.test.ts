@@ -63,13 +63,19 @@ function mkCandidate(
 }
 
 describe("selectCandidates", () => {
-  it("sorts by ascending usagePercent", () => {
-    const out = selectCandidates([
-      mkCandidate("a", 80, true),
-      mkCandidate("b", 10, true),
-      mkCandidate("c", 50, true),
-    ]);
-    expect(out.map((c) => c.provider.id)).toEqual(["b", "c", "a"]);
+  it("tends to rank lower-usage candidates higher", () => {
+    // With 50% quota weight, low usage should consistently beat high usage.
+    const firsts: Record<string, number> = {};
+    for (let i = 0; i < 200; i++) {
+      const out = selectCandidates([
+        mkCandidate("high", 90, true),
+        mkCandidate("low", 5, true),
+      ]);
+      const first = out[0].provider.id;
+      firsts[first] = (firsts[first] ?? 0) + 1;
+    }
+    // low-usage should win the vast majority of the time
+    expect(firsts["low"]).toBeGreaterThan(150);
   });
 
   it("filters out unhealthy", () => {
@@ -81,18 +87,24 @@ describe("selectCandidates", () => {
   });
 
   it("treats null usagePercent as 0 (highest priority)", () => {
-    const out = selectCandidates([
-      mkCandidate("a", 5, true),
-      mkCandidate("b", null, true),
-    ]);
-    expect(out[0].provider.id).toBe("b");
+    // null → 0% used → maximum quota score → should almost always rank first
+    const firsts: Record<string, number> = {};
+    for (let i = 0; i < 200; i++) {
+      const out = selectCandidates([
+        mkCandidate("a", 80, true),
+        mkCandidate("b", null, true),
+      ]);
+      const first = out[0].provider.id;
+      firsts[first] = (firsts[first] ?? 0) + 1;
+    }
+    expect(firsts["b"]).toBeGreaterThan(150);
   });
 
-  it("randomizes order within equal-quota groups across runs", () => {
-    // 4 candidates all with usagePercent=0. Over many runs the first
-    // position should not always be the same provider.
+  it("randomizes order across runs due to random factor", () => {
+    // With identical quota and weight, the 20% random component should
+    // produce varied orderings across many runs.
     const firsts = new Set<string>();
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 100; i++) {
       const out = selectCandidates([
         mkCandidate("a", 0, true),
         mkCandidate("b", 0, true),
@@ -104,17 +116,17 @@ describe("selectCandidates", () => {
     expect(firsts.size).toBeGreaterThan(1);
   });
 
-  it("quantizes near-equal usage into the same bucket", () => {
-    // 10.04 and 10.0 both round to 10.0 — should be in the same bucket
-    // and may appear in either order.
-    const out = selectCandidates([
-      mkCandidate("a", 10.04, true),
-      mkCandidate("b", 10.0, true),
-      mkCandidate("c", 50, true),
-    ]);
-    expect(out.at(-1)?.provider.id).toBe("c");
-    expect(new Set(out.slice(0, 2).map((c) => c.provider.id))).toEqual(
-      new Set(["a", "b"]),
-    );
+  it("higher weight tends to rank higher when quota is equal", () => {
+    const firsts: Record<string, number> = {};
+    for (let i = 0; i < 200; i++) {
+      const out = selectCandidates([
+        mkCandidate("lowW", 0, true, 1),
+        mkCandidate("highW", 0, true, 8),
+      ]);
+      const first = out[0].provider.id;
+      firsts[first] = (firsts[first] ?? 0) + 1;
+    }
+    // high-weight should win most of the time
+    expect(firsts["highW"]).toBeGreaterThan(120);
   });
 });

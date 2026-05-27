@@ -124,10 +124,12 @@ export interface ProviderAdapter {
   chat(
     provider: ResolvedProvider,
     req: NormalizedChatRequest,
+    signal?: AbortSignal,
   ): Promise<NormalizedChatResponse>;
   chatStream(
     provider: ResolvedProvider,
     req: NormalizedChatRequest,
+    signal?: AbortSignal,
   ): AsyncIterable<NormalizedChunk>;
 }
 

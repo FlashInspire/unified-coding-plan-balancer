@@ -33,6 +33,12 @@ export interface ProviderPatch {
   rollingQuotaUsed?: number;
   weekQuotaUsed?: number;
   monthQuotaUsed?: number;
+  rollingCacheInputTokensUsed?: number;
+  rollingOutputTokensUsed?: number;
+  weekCacheInputTokensUsed?: number;
+  weekOutputTokensUsed?: number;
+  monthCacheInputTokensUsed?: number;
+  monthOutputTokensUsed?: number;
   rollingHourOffset?: number;
   usageMode?: string;
   enabled?: boolean;
@@ -107,6 +113,24 @@ export const providerRepo = {
           : {}),
         ...(patch.monthQuotaUsed !== undefined
           ? { monthQuotaUsed: patch.monthQuotaUsed }
+          : {}),
+        ...(patch.rollingCacheInputTokensUsed !== undefined
+          ? { rollingCacheInputTokensUsed: patch.rollingCacheInputTokensUsed }
+          : {}),
+        ...(patch.rollingOutputTokensUsed !== undefined
+          ? { rollingOutputTokensUsed: patch.rollingOutputTokensUsed }
+          : {}),
+        ...(patch.weekCacheInputTokensUsed !== undefined
+          ? { weekCacheInputTokensUsed: patch.weekCacheInputTokensUsed }
+          : {}),
+        ...(patch.weekOutputTokensUsed !== undefined
+          ? { weekOutputTokensUsed: patch.weekOutputTokensUsed }
+          : {}),
+        ...(patch.monthCacheInputTokensUsed !== undefined
+          ? { monthCacheInputTokensUsed: patch.monthCacheInputTokensUsed }
+          : {}),
+        ...(patch.monthOutputTokensUsed !== undefined
+          ? { monthOutputTokensUsed: patch.monthOutputTokensUsed }
           : {}),
         ...(patch.rollingHourOffset !== undefined
           ? { rollingHourOffset: patch.rollingHourOffset }

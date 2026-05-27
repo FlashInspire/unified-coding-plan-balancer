@@ -48,12 +48,14 @@ export class OpenAIAdapter implements ProviderAdapter {
   async chat(
     provider: ResolvedProvider,
     req: NormalizedChatRequest,
+    signal?: AbortSignal,
   ): Promise<NormalizedChatResponse> {
     const url = joinUrl(provider.baseUrl, "/chat/completions");
     const res = await fetch(url, {
       method: "POST",
       headers: headers(provider),
       body: JSON.stringify(body(req, false)),
+      signal,
     });
     if (!res.ok) {
       const text = await res.text();
@@ -88,12 +90,14 @@ export class OpenAIAdapter implements ProviderAdapter {
   async *chatStream(
     provider: ResolvedProvider,
     req: NormalizedChatRequest,
+    signal?: AbortSignal,
   ): AsyncGenerator<NormalizedChunk> {
     const url = joinUrl(provider.baseUrl, "/chat/completions");
     const res = await fetch(url, {
       method: "POST",
       headers: headers(provider),
       body: JSON.stringify(body(req, true)),
+      signal,
     });
     if (!res.ok) {
       const text = await res.text();

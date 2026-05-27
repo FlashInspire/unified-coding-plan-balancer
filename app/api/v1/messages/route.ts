@@ -58,6 +58,7 @@ export async function POST(req: Request): Promise<Response> {
       req.headers.get("x-real-ip") ??
       null,
     userAgent: req.headers.get("user-agent"),
+    signal: req.signal,
   };
 
   // Normalize messages for internal routing.
@@ -111,6 +112,11 @@ export async function POST(req: Request): Promise<Response> {
       const encoder = new TextEncoder();
       const readableStream = new ReadableStream({
         async start(controller) {
+          const abortHandler = () =>
+            controller.error(
+              new DOMException("The operation was aborted.", "AbortError"),
+            );
+          req.signal.addEventListener("abort", abortHandler);
           function emit(event: string, data: unknown) {
             controller.enqueue(
               encoder.encode(
@@ -206,6 +212,8 @@ export async function POST(req: Request): Promise<Response> {
             controller.close();
           } catch (err) {
             controller.error(err);
+          } finally {
+            req.signal.removeEventListener("abort", abortHandler);
           }
         },
       });

@@ -15,7 +15,7 @@ import {
 import { getAdapter } from "@/lib/adapters";
 import { UpstreamError } from "@/lib/adapters/openai";
 import { metricsBuffer, type RequestLogRecord } from "@/lib/metrics/buffer";
-import { logRequestStart } from "@/lib/metrics/flusher";
+import { logRequestStart, logRequestUpdate } from "@/lib/metrics/flusher";
 import { modelRepo } from "@/lib/repositories/modelRepo";
 import { providerModelRepo } from "@/lib/repositories/providerModelRepo";
 import { providerRepo } from "@/lib/repositories/providerRepo";
@@ -64,6 +64,9 @@ export interface DispatchContext {
   apiModeIn: ApiMode;
   ip: string | null;
   userAgent: string | null;
+  /** AbortSignal from the incoming client request. When triggered, the
+   *  upstream fetch is aborted and the stream iterator exits early. */
+  signal?: AbortSignal;
 }
 
 export interface DispatchSuccess {
@@ -89,6 +92,19 @@ function isRetryable(err: unknown): boolean {
 function emitMetrics(record: RequestLogRecord): void {
   try {
     metricsBuffer.push(record);
+  } catch {
+    /* never block on metrics */
+  }
+}
+
+/** Immediately write a partial update to an in-flight log row. */
+function emitMetricsUpdate(
+  requestId: number,
+  ts: number,
+  fields: Parameters<typeof logRequestUpdate>[2],
+): void {
+  try {
+    logRequestUpdate(requestId, ts, fields);
   } catch {
     /* never block on metrics */
   }
@@ -175,6 +191,7 @@ export async function dispatchChat(
       const resp = await adapter.chat(
         resolveProvider(c.provider, ctx.apiModeIn),
         req,
+        ctx.signal,
       );
       const latency = Date.now() - started;
       emitMetrics({
@@ -341,6 +358,7 @@ export async function dispatchChatStream(
       const src = adapter.chatStream(
         resolveProvider(c.provider, ctx.apiModeIn),
         req,
+        ctx.signal,
       );
       // Peek first iteration to detect immediate errors.
       const wrapped = wrapStream(src, {
@@ -395,6 +413,14 @@ function wrapStream(
         for await (const chunk of src) {
           if ((chunk.delta || chunk.toolCallsDelta != null) && ttft == null) {
             ttft = Date.now() - ctx.started;
+            // Immediately update the log row with TTFT so it's visible
+            // before the stream completes.
+            if (ctx.requestId != null) {
+              emitMetricsUpdate(ctx.requestId, ctx.started, {
+                status: 200,
+                ttftMs: ttft,
+              });
+            }
           }
           if (chunk.delta) streamOutputTokens++;
           if (chunk.usage) usage = chunk.usage;
@@ -677,6 +703,7 @@ export async function dispatchDirectChatStream(
     const src = adapter.chatStream(
       resolveProvider(c.provider, ctx.apiModeIn),
       req,
+      ctx.signal,
     );
     const wrapped = wrapStream(src, {
       started,

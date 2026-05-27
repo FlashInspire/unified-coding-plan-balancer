@@ -46,6 +46,50 @@ export function logRequestStart(record: RequestLogRecord): number {
   return Number(result.lastInsertRowid);
 }
 
+/**
+ * Immediately update an existing request_log row in the shard DB.
+ * Used for early updates (e.g. TTFT) before the request completes.
+ */
+export function logRequestUpdate(
+  requestId: number,
+  ts: number,
+  fields: {
+    status?: number;
+    ttftMs?: number | null;
+    tpsOut?: number | null;
+    latencyMs?: number;
+    inputTokens?: number;
+    cachedInputTokens?: number;
+    outputTokens?: number;
+    errorCode?: string | null;
+  },
+): void {
+  const k = dateKey(new Date(ts));
+  const db = shardStore.openLog(k);
+  db.prepare(
+    `UPDATE request_log SET
+       status = COALESCE(?, status),
+       ttft_ms = COALESCE(?, ttft_ms),
+       tps_out = COALESCE(?, tps_out),
+       latency_ms = COALESCE(?, latency_ms),
+       input_tokens = COALESCE(?, input_tokens),
+       cached_input_tokens = COALESCE(?, cached_input_tokens),
+       output_tokens = COALESCE(?, output_tokens),
+       error_code = COALESCE(?, error_code)
+     WHERE id = ?`,
+  ).run(
+    fields.status ?? null,
+    fields.ttftMs ?? null,
+    fields.tpsOut ?? null,
+    fields.latencyMs ?? null,
+    fields.inputTokens ?? null,
+    fields.cachedInputTokens ?? null,
+    fields.outputTokens ?? null,
+    fields.errorCode ?? null,
+    requestId,
+  );
+}
+
 export function flushOnce(): number {
   const batch = metricsBuffer.drain(env.METRICS_FLUSH_BATCH_SIZE);
   if (batch.length === 0) return 0;
