@@ -8,6 +8,7 @@ import { apiFetch } from "../_components/api";
 interface UserRow {
   id: string;
   username: string;
+  mustChangePassword: boolean;
   createdAt: string;
 }
 
@@ -84,6 +85,47 @@ export default function UsersPage() {
           data={data as unknown as Record<string, unknown>[]}
           columns={[
             { key: "username", label: "Username" },
+            {
+              key: "mustChangePassword",
+              label: "Must Change Password",
+              render: (r) => {
+                const row = r as unknown as UserRow;
+                return (
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      setError(null);
+                      try {
+                        await apiFetch(`/api/admin/users/${row.id}`, {
+                          method: "PATCH",
+                          body: JSON.stringify({
+                            mustChangePassword: !row.mustChangePassword,
+                          }),
+                        });
+                        await load();
+                      } catch (err) {
+                        setError(
+                          err instanceof Error
+                            ? err.message
+                            : "Failed to update user",
+                        );
+                      }
+                    }}
+                    className={`inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                      row.mustChangePassword ? "bg-amber-500" : "bg-gray-300"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
+                        row.mustChangePassword
+                          ? "translate-x-4"
+                          : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                );
+              },
+            },
             {
               key: "createdAt",
               label: "Created",

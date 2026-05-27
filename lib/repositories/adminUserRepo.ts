@@ -8,10 +8,20 @@ export const adminUserRepo = {
   },
 
   async findAll(): Promise<
-    { id: string; username: string; createdAt: Date }[]
+    {
+      id: string;
+      username: string;
+      mustChangePassword: boolean;
+      createdAt: Date;
+    }[]
   > {
     return prisma.adminUser.findMany({
-      select: { id: true, username: true, createdAt: true },
+      select: {
+        id: true,
+        username: true,
+        mustChangePassword: true,
+        createdAt: true,
+      },
       orderBy: { username: "asc" },
     });
   },
@@ -35,7 +45,14 @@ export const adminUserRepo = {
     const passwordHash = await hashPassword(plainPassword);
     return prisma.adminUser.update({
       where: { id },
-      data: { passwordHash },
+      data: { passwordHash, mustChangePassword: false },
+    });
+  },
+
+  async setMustChangePassword(id: string, value: boolean) {
+    return prisma.adminUser.update({
+      where: { id },
+      data: { mustChangePassword: value },
     });
   },
 

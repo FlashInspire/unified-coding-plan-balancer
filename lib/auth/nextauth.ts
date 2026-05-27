@@ -32,7 +32,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!user) return null;
         const ok = await verifyPassword(password, user.passwordHash);
         if (!ok) return null;
-        return { id: user.id, name: user.username };
+        return {
+          id: user.id,
+          name: user.username,
+          mustChangePassword: user.mustChangePassword,
+        };
       },
     }),
   ],
@@ -41,12 +45,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     jwt: ({ token, user }) => {
       if (user) {
         token.id = user.id;
+        token.mustChangePassword =
+          (user as { mustChangePassword?: boolean }).mustChangePassword ??
+          false;
       }
       return token;
     },
     session: ({ session, token }) => {
       if (session.user && token.id) {
         session.user.id = token.id as string;
+        session.user.mustChangePassword = token.mustChangePassword as boolean;
       }
       return session;
     },

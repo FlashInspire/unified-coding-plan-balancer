@@ -40,6 +40,14 @@ export const authConfig: NextAuthConfig = {
       ) {
         return true;
       }
+      // Must-change-password: only allow the change-password page
+      if (auth?.user?.mustChangePassword) {
+        if (path === "/change-password") return true;
+        const url = request.nextUrl.clone();
+        url.pathname = "/change-password";
+        url.searchParams.set("callbackUrl", path);
+        return Response.redirect(url);
+      }
       return !!auth?.user;
     },
   },

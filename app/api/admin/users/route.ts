@@ -33,7 +33,12 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     const user = await adminUserRepo.create(body.username, body.password);
     return Response.json({
-      data: { id: user.id, username: user.username, createdAt: user.createdAt },
+      data: {
+        id: user.id,
+        username: user.username,
+        mustChangePassword: user.mustChangePassword,
+        createdAt: user.createdAt,
+      },
     });
   } catch (e) {
     return Response.json(

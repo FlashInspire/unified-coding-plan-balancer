@@ -126,10 +126,11 @@ model ApiKey {
 // AdminUser — admin console accounts (bcrypt-hashed password).
 // -----------------------------------------------------------------------------
 model AdminUser {
-  id           String   @id @default(cuid())
-  username     String   @unique
-  passwordHash String
-  createdAt    DateTime @default(now())
+  id                 String   @id @default(cuid())
+  username           String   @unique
+  passwordHash       String
+  mustChangePassword Boolean  @default(false)
+  createdAt          DateTime @default(now())
 }
 
 // -----------------------------------------------------------------------------
