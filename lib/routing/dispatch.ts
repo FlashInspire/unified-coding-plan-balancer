@@ -18,13 +18,17 @@ import { metricsBuffer, type RequestLogRecord } from "@/lib/metrics/buffer";
 import { logRequestStart, logRequestUpdate } from "@/lib/metrics/flusher";
 import { modelRepo } from "@/lib/repositories/modelRepo";
 import { providerModelRepo } from "@/lib/repositories/providerModelRepo";
+import type { RoutingCandidate } from "@/lib/repositories/providerModelRepo";
 import { providerRepo } from "@/lib/repositories/providerRepo";
 import {
+  incrementQuotaExhaustedRetry,
+  markQuotaRunningOut,
   markTransientFailure,
   selectCandidates,
 } from "@/lib/routing/selectCandidate";
 import { resolveModelParams } from "@/lib/routing/resolveParams";
 import { activeRequests } from "@/lib/routing/activeRequests";
+import { env } from "@/lib/env";
 import type {
   ApiMode,
   ModelRow,
@@ -125,6 +129,24 @@ async function loadModel(modelId: string): Promise<ModelRow> {
   return m;
 }
 
+/**
+ * Track quota-exhausted retry for a candidate. If the provider's usagePercent
+ * is at or above the exhaust threshold, increment the retry counter. If the
+ * counter reaches MAX_QUOTA_RETRIES, mark the provider as "Running out" in
+ * both in-memory state and the DB (best-effort).
+ */
+function trackQuotaExhaustedRetry(c: RoutingCandidate): void {
+  if ((c.usagePercent ?? 0) < env.QUOTA_EXHAUST_THRESHOLD) return;
+  const retries = incrementQuotaExhaustedRetry(c.provider.id);
+  if (retries >= env.MAX_QUOTA_RETRIES) {
+    markQuotaRunningOut(c.provider.id);
+    // Best-effort DB update — never block on this
+    providerRepo
+      .update(c.provider.id, { quotaRunningOut: true })
+      .catch(() => {});
+  }
+}
+
 export async function dispatchChat(
   modelId: string,
   messages: NormalizedChatRequest["messages"],
@@ -146,6 +168,7 @@ export async function dispatchChat(
     [];
 
   for (const c of sorted) {
+    trackQuotaExhaustedRetry(c);
     const params = resolveModelParams(model, c.provider, c.pm, user);
     const adapter = getAdapter(ctx.apiModeIn);
     const req: NormalizedChatRequest = {
@@ -313,6 +336,7 @@ export async function dispatchChatStream(
     [];
 
   for (const c of sorted) {
+    trackQuotaExhaustedRetry(c);
     const params = resolveModelParams(model, c.provider, c.pm, user);
     const adapter = getAdapter(ctx.apiModeIn);
     const req: NormalizedChatRequest = {

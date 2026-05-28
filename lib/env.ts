@@ -22,6 +22,7 @@ const schema = z.object({
   QUOTA_REFRESH_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
   QUOTA_REFRESH_CONCURRENCY: z.coerce.number().int().positive().default(4),
   QUOTA_EXHAUST_THRESHOLD: z.coerce.number().min(0).max(100).default(100),
+  MAX_QUOTA_RETRIES: z.coerce.number().int().positive().default(3),
 
   /** Public base URL when behind a reverse proxy (e.g. https://ai-router.example.com) */
   NEXTAUTH_URL: z.string().url().optional(),

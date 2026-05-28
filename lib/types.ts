@@ -50,6 +50,7 @@ export interface ProviderRow {
   monthCacheInputTokensUsed: number;
   monthOutputTokensUsed: number;
   enabled: boolean;
+  quotaRunningOut: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

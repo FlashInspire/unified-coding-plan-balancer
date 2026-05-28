@@ -164,6 +164,11 @@ export default function ProviderModelsPage() {
               <span className="text-muted-foreground text-xs ml-2">
                 {prov.id}
               </span>
+              {prov.quotaRunningOut && (
+                <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 ml-2">
+                  Running out
+                </span>
+              )}
             </div>
             <span className="ml-auto text-xs text-muted-foreground shrink-0">
               {pms.length} model{pms.length !== 1 ? "s" : ""}

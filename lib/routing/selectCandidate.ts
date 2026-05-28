@@ -22,6 +22,46 @@ function isInFailureWindow(providerId: string): boolean {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Quota-exhausted retry tracking
+// ---------------------------------------------------------------------------
+
+/**
+ * In-memory counter for how many times a quota-exhausted provider has been
+ * selected for routing. Once this reaches MAX_QUOTA_RETRIES the provider is
+ * marked as "Running out" and excluded from future routing until quota resets.
+ */
+const quotaExhaustedRetries = new Map<string, number>();
+
+/**
+ * In-memory set of provider IDs currently marked as "Running out".
+ * Mirrors the DB `quotaRunningOut` field for race-condition-safe routing.
+ */
+const quotaRunningOutSet = new Set<string>();
+
+/** Increment the retry counter for a quota-exhausted provider. Returns the new count. */
+export function incrementQuotaExhaustedRetry(providerId: string): number {
+  const next = (quotaExhaustedRetries.get(providerId) ?? 0) + 1;
+  quotaExhaustedRetries.set(providerId, next);
+  return next;
+}
+
+/** Check whether a provider is currently marked as "Running out" (in-memory). */
+export function isQuotaRunningOut(providerId: string): boolean {
+  return quotaRunningOutSet.has(providerId);
+}
+
+/** Mark a provider as "Running out" in the in-memory set. */
+export function markQuotaRunningOut(providerId: string): void {
+  quotaRunningOutSet.add(providerId);
+}
+
+/** Reset the retry counter and "Running out" status for a provider. */
+export function resetQuotaRetries(providerId: string): void {
+  quotaExhaustedRetries.delete(providerId);
+  quotaRunningOutSet.delete(providerId);
+}
+
 // Score weights — must sum to 1.0
 const W_QUOTA = 0.5;
 const W_WEIGHT = 0.3;
@@ -31,7 +71,11 @@ const W_RANDOM = 0.2;
  * Routing selection using a composite weighted score.
  *
  * Algorithm:
- * 1. Drop unhealthy, transiently-failing, and exhausted candidates.
+ * 1. Drop unhealthy, transiently-failing, and "Running out" candidates.
+ *    Quota-exhausted providers (usagePercent >= threshold) are NOT filtered
+ *    out — they are still eligible but receive a lower score. Only after
+ *    MAX_QUOTA_RETRIES consecutive selections of an exhausted provider is it
+ *    marked as "Running out" and excluded.
  * 2. For each remaining candidate compute a composite score:
  *    - Quota score (50%): inverse of usagePercent — lower usage = higher score.
  *    - Weight score (30%): normalized provider-model weight — higher = better.
@@ -43,12 +87,18 @@ const W_RANDOM = 0.2;
 export function selectCandidates(
   candidates: RoutingCandidate[],
 ): RoutingCandidate[] {
-  const eligible = candidates.filter(
-    (c) =>
-      c.healthy &&
-      !isInFailureWindow(c.provider.id) &&
-      (c.usagePercent ?? 0) < env.QUOTA_EXHAUST_THRESHOLD,
-  );
+  const eligible = candidates.filter((c) => {
+    if (!c.healthy) return false;
+    if (isInFailureWindow(c.provider.id)) return false;
+    // Exclude providers marked as "Running out" (in-memory or DB)
+    if (isQuotaRunningOut(c.provider.id) || c.provider.quotaRunningOut)
+      return false;
+    // If usage has recovered below threshold, clear retry counter
+    if ((c.usagePercent ?? 0) < env.QUOTA_EXHAUST_THRESHOLD) {
+      resetQuotaRetries(c.provider.id);
+    }
+    return true;
+  });
 
   if (eligible.length <= 1) return eligible.slice();
 

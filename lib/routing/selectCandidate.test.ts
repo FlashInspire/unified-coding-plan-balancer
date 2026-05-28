@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { selectCandidates } from "@/lib/routing/selectCandidate";
+import { describe, expect, it, beforeEach } from "vitest";
+import {
+  selectCandidates,
+  incrementQuotaExhaustedRetry,
+  isQuotaRunningOut,
+  markQuotaRunningOut,
+  resetQuotaRetries,
+} from "@/lib/routing/selectCandidate";
 import type { RoutingCandidate } from "@/lib/repositories/providerModelRepo";
 import type { ProviderModelRow, ProviderRow } from "@/lib/types";
 
@@ -9,6 +15,7 @@ function mkCandidate(
   healthy: boolean,
   weight = 1,
   activeReqs = 0,
+  quotaRunningOut = false,
 ): RoutingCandidate {
   const provider: ProviderRow = {
     id: providerId,
@@ -36,6 +43,7 @@ function mkCandidate(
     monthCacheInputTokensUsed: 0,
     monthOutputTokensUsed: 0,
     enabled: true,
+    quotaRunningOut,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -128,5 +136,87 @@ describe("selectCandidates", () => {
     }
     // high-weight should win most of the time
     expect(firsts["highW"]).toBeGreaterThan(120);
+  });
+
+  it("does NOT filter out quota-exhausted providers (still eligible)", () => {
+    // usagePercent = 100 means quota exhausted, but provider should still be
+    // in the candidate list (just with a lower score).
+    const out = selectCandidates([
+      mkCandidate("exhausted", 100, true),
+      mkCandidate("fresh", 5, true),
+    ]);
+    expect(out.length).toBe(2);
+    // fresh should rank first most of the time
+    const firsts: Record<string, number> = {};
+    for (let i = 0; i < 100; i++) {
+      const r = selectCandidates([
+        mkCandidate("exhausted", 100, true),
+        mkCandidate("fresh", 5, true),
+      ]);
+      const first = r[0].provider.id;
+      firsts[first] = (firsts[first] ?? 0) + 1;
+    }
+    expect(firsts["fresh"]).toBeGreaterThan(80);
+  });
+
+  it("filters out providers marked as quotaRunningOut (DB field)", () => {
+    const out = selectCandidates([
+      mkCandidate("runningOut", 100, true, 1, 0, true),
+      mkCandidate("normal", 50, true),
+    ]);
+    expect(out.map((c) => c.provider.id)).toEqual(["normal"]);
+  });
+
+  it("filters out providers marked as quotaRunningOut (in-memory)", () => {
+    markQuotaRunningOut("mem-running-out");
+    const out = selectCandidates([
+      mkCandidate("mem-running-out", 100, true),
+      mkCandidate("normal", 50, true),
+    ]);
+    expect(out.map((c) => c.provider.id)).toEqual(["normal"]);
+    resetQuotaRetries("mem-running-out");
+  });
+});
+
+describe("quota retry tracking", () => {
+  beforeEach(() => {
+    // Clean up in-memory state between tests
+    resetQuotaRetries("test-provider");
+  });
+
+  it("incrementQuotaExhaustedRetry increments counter", () => {
+    expect(incrementQuotaExhaustedRetry("test-provider")).toBe(1);
+    expect(incrementQuotaExhaustedRetry("test-provider")).toBe(2);
+    expect(incrementQuotaExhaustedRetry("test-provider")).toBe(3);
+  });
+
+  it("markQuotaRunningOut adds to in-memory set", () => {
+    expect(isQuotaRunningOut("test-provider")).toBe(false);
+    markQuotaRunningOut("test-provider");
+    expect(isQuotaRunningOut("test-provider")).toBe(true);
+  });
+
+  it("resetQuotaRetries clears counter and running-out status", () => {
+    incrementQuotaExhaustedRetry("test-provider");
+    incrementQuotaExhaustedRetry("test-provider");
+    markQuotaRunningOut("test-provider");
+    expect(isQuotaRunningOut("test-provider")).toBe(true);
+
+    resetQuotaRetries("test-provider");
+    expect(isQuotaRunningOut("test-provider")).toBe(false);
+    // Counter is also reset, so next increment starts at 1
+    expect(incrementQuotaExhaustedRetry("test-provider")).toBe(1);
+  });
+
+  it("provider with usagePercent below threshold has retry counter reset", () => {
+    // Simulate a provider that was exhausted and had retries
+    incrementQuotaExhaustedRetry("test-provider");
+    incrementQuotaExhaustedRetry("test-provider");
+
+    // Now select with usagePercent below threshold — should reset counter
+    selectCandidates([mkCandidate("test-provider", 50, true)]);
+
+    // Counter should be reset, so next increment starts at 1
+    expect(incrementQuotaExhaustedRetry("test-provider")).toBe(1);
   });
 });

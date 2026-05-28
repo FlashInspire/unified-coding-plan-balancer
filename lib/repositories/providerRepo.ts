@@ -18,6 +18,7 @@ export interface ProviderInput {
   rollingHourOffset?: number;
   usageMode?: string;
   enabled?: boolean;
+  quotaRunningOut?: boolean;
 }
 
 export interface ProviderPatch {
@@ -42,6 +43,7 @@ export interface ProviderPatch {
   rollingHourOffset?: number;
   usageMode?: string;
   enabled?: boolean;
+  quotaRunningOut?: boolean;
 }
 
 export const providerRepo = {
@@ -73,6 +75,7 @@ export const providerRepo = {
         rollingHourOffset: input.rollingHourOffset ?? 0,
         usageMode: input.usageMode ?? "request",
         enabled: input.enabled ?? true,
+        quotaRunningOut: input.quotaRunningOut ?? false,
       },
     });
   },
@@ -139,6 +142,9 @@ export const providerRepo = {
           ? { usageMode: patch.usageMode }
           : {}),
         ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+        ...(patch.quotaRunningOut !== undefined
+          ? { quotaRunningOut: patch.quotaRunningOut }
+          : {}),
       },
     });
   },

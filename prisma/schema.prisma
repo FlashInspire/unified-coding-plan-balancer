@@ -65,6 +65,7 @@ model Provider {
   monthCacheInputTokensUsed   Float     @default(0.0)
   monthOutputTokensUsed       Float     @default(0.0)
   enabled                     Boolean   @default(true)
+  quotaRunningOut             Boolean   @default(false) // marked true after MAX_QUOTA_RETRIES on exhausted provider
   createdAt                   DateTime  @default(now())
   updatedAt                   DateTime  @updatedAt
 

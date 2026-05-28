@@ -204,6 +204,11 @@ export default function ProvidersPage() {
         <div className="min-w-0">
           <span className="font-semibold text-sm">{p.name}</span>
           <span className="text-muted-foreground text-xs ml-2">{p.id}</span>
+          {p.quotaRunningOut && (
+            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 ml-2">
+              Running out
+            </span>
+          )}
         </div>
         <div className="ml-auto flex gap-3 text-xs text-muted-foreground shrink-0">
           <span title="Rolling">

@@ -11,6 +11,7 @@
  * Monthly resets fire at the 1st day 00:00.
  */
 import { prisma } from "@/lib/prisma";
+import { resetQuotaRetries } from "@/lib/routing/selectCandidate";
 
 // ---------------------------------------------------------------------------
 // Exported helpers (pure, testable)
@@ -138,6 +139,7 @@ async function tick(): Promise<void> {
   await Promise.all(
     providers.map((p) => {
       const updates: Record<string, unknown> = {};
+      let anyReset = false;
 
       // Rolling — reset if past due, or backfill if resetAt is missing
       // quota = 0 or null means unlimited → skip scheduling
@@ -154,6 +156,7 @@ async function tick(): Promise<void> {
             now,
             p.rollingHourOffset,
           );
+          anyReset = true;
         } else if (!p.rollingQuotaResetAt) {
           updates.rollingQuotaResetAt = computeNextResetAt(
             "rolling",
@@ -171,6 +174,7 @@ async function tick(): Promise<void> {
           updates.weekCacheInputTokensUsed = 0;
           updates.weekOutputTokensUsed = 0;
           updates.weekQuotaResetAt = computeNextResetAt("week", now);
+          anyReset = true;
         } else if (!p.weekQuotaResetAt) {
           updates.weekQuotaResetAt = computeNextResetAt("week", now);
         }
@@ -184,9 +188,16 @@ async function tick(): Promise<void> {
           updates.monthCacheInputTokensUsed = 0;
           updates.monthOutputTokensUsed = 0;
           updates.monthQuotaResetAt = computeNextResetAt("month", now);
+          anyReset = true;
         } else if (!p.monthQuotaResetAt) {
           updates.monthQuotaResetAt = computeNextResetAt("month", now);
         }
+      }
+
+      // When any quota dimension resets, also clear the "Running out" status
+      if (anyReset) {
+        updates.quotaRunningOut = false;
+        resetQuotaRetries(p.id);
       }
 
       if (Object.keys(updates).length === 0) return Promise.resolve();

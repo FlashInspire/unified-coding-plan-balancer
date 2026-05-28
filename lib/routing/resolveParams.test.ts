@@ -42,6 +42,7 @@ const baseProvider: ProviderRow = {
   monthCacheInputTokensUsed: 0,
   monthOutputTokensUsed: 0,
   enabled: true,
+  quotaRunningOut: false,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

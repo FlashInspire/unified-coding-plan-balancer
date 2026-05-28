@@ -26,6 +26,7 @@ const updateSchema = z.object({
   usageMode: z.enum(["request", "token"]).optional(),
   weight: z.number().int().min(0).optional(),
   enabled: z.boolean().optional(),
+  quotaRunningOut: z.boolean().optional(),
 });
 
 export async function GET(
