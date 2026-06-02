@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { NextRequest } from "next/server";
 import { requireAdmin } from "../../_lib/guard";
 import { providerRepo } from "@/lib/repositories/providerRepo";
+import { resetQuotaRetries } from "@/lib/routing/selectCandidate";
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -48,6 +49,28 @@ export async function PATCH(
   const { id } = await params;
   try {
     const data = updateSchema.parse(await req.json());
+
+    // When any quota counter is manually reset to 0, also clear the
+    // quotaRunningOut flag so the provider becomes eligible for routing again.
+    const quotaUsedFields = [
+      "rollingQuotaUsed",
+      "weekQuotaUsed",
+      "monthQuotaUsed",
+      "rollingCacheInputTokensUsed",
+      "rollingOutputTokensUsed",
+      "weekCacheInputTokensUsed",
+      "weekOutputTokensUsed",
+      "monthCacheInputTokensUsed",
+      "monthOutputTokensUsed",
+    ] as const;
+    const anyQuotaReset = quotaUsedFields.some(
+      (f) => f in data && data[f as keyof typeof data] === 0,
+    );
+    if (anyQuotaReset) {
+      data.quotaRunningOut = false;
+      resetQuotaRetries(id);
+    }
+
     const row = await providerRepo.update(id, data);
     return Response.json({ data: row });
   } catch (e) {

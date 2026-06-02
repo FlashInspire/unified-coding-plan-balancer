@@ -119,6 +119,12 @@ const PROVIDER_FIELDS = [
     type: "boolean" as const,
     defaultValue: true,
   },
+  {
+    name: "quotaRunningOut",
+    label: "Quota Running Out",
+    type: "boolean" as const,
+    defaultValue: false,
+  },
 ];
 
 /** Format quota numbers using decimal units (1K = 1000, 1M = 1000000). */
