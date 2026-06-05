@@ -40,23 +40,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
-  callbacks: {
-    ...authConfig.callbacks,
-    jwt: ({ token, user }) => {
-      if (user) {
-        token.id = user.id;
-        token.mustChangePassword =
-          (user as { mustChangePassword?: boolean }).mustChangePassword ??
-          false;
-      }
-      return token;
-    },
-    session: ({ session, token }) => {
-      if (session.user && token.id) {
-        session.user.id = token.id as string;
-        session.user.mustChangePassword = token.mustChangePassword as boolean;
-      }
-      return session;
-    },
-  },
 });

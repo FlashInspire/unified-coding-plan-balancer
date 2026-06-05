@@ -47,7 +47,7 @@ function ChangePasswordForm() {
       });
       setSuccess(true);
       // Refresh the session so mustChangePassword becomes false
-      await update();
+      await update({ mustChangePassword: false });
       // Redirect after a short delay
       setTimeout(() => {
         router.push(sp.get("callbackUrl") ?? "/");

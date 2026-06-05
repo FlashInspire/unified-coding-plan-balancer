@@ -50,5 +50,27 @@ export const authConfig: NextAuthConfig = {
       }
       return !!auth?.user;
     },
+    jwt: ({ token, user, trigger, session }) => {
+      if (user) {
+        token.id = user.id;
+        token.mustChangePassword =
+          (user as { mustChangePassword?: boolean }).mustChangePassword ??
+          false;
+      }
+      if (trigger === "update" && session) {
+        const s = session as { mustChangePassword?: boolean };
+        if (typeof s.mustChangePassword === "boolean") {
+          token.mustChangePassword = s.mustChangePassword;
+        }
+      }
+      return token;
+    },
+    session: ({ session, token }) => {
+      if (session.user && token.id) {
+        session.user.id = token.id as string;
+        session.user.mustChangePassword = token.mustChangePassword as boolean;
+      }
+      return session;
+    },
   },
 };

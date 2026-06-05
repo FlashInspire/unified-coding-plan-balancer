@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { signIn } from "next-auth/react";
+import { signIn, getSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 export default function LoginPage() {
@@ -32,6 +32,15 @@ function LoginForm() {
     setLoading(false);
     if (result?.error) {
       setError("Invalid credentials");
+      return;
+    }
+    // Check if user must change password before allowing access
+    const session = await getSession();
+    if (session?.user?.mustChangePassword) {
+      const callbackUrl = sp.get("callbackUrl");
+      const params = new URLSearchParams();
+      if (callbackUrl) params.set("callbackUrl", callbackUrl);
+      router.push(`/change-password${params.toString() ? `?${params}` : ""}`);
       return;
     }
     router.push(sp.get("callbackUrl") ?? "/");
