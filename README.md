@@ -120,7 +120,7 @@ Expose both **OpenAI** and **Anthropic** compatible endpoints simultaneously. Cl
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/unified-coding-plan-balancer.git
+git clone https://github.com/FlashInspire/unified-coding-plan-balancer.git
 cd unified-coding-plan-balancer
 
 # Install dependencies

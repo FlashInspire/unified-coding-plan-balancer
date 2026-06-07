@@ -120,7 +120,7 @@ Unified Coding Plan Balancer 是一个部署在你的应用和多个上游 AI �
 
 ```bash
 # 克隆仓库
-git clone https://github.com/your-org/unified-coding-plan-balancer.git
+git clone https://github.com/FlashInspire/unified-coding-plan-balancer.git
 cd unified-coding-plan-balancer
 
 # 安装依赖
