@@ -10,20 +10,28 @@ import { listShards } from "@/lib/metrics/shardStore";
 
 let timer: NodeJS.Timeout | null = null;
 
-function dataRoot(): string {
-  // Use a literal string as the first path component so Turbopack can
-  // statically scope file tracing to <cwd>/data/ instead of the whole project.
-  return path.join(process.cwd(), "data");
-}
-
 function purgeLogs(): number {
   const cutoff = new Date(Date.now() - env.LOG_RETENTION_DAYS * 86_400_000);
   const cutoffKey = cutoff.toISOString().slice(0, 10);
   let removed = 0;
   for (const key of listShards("log")) {
     if (key < cutoffKey) {
-      const file = path.join(dataRoot(), "logs", `${key}.sqlite`);
-      tryDelete(file);
+      // Inline literal path at every fs.* call site so Turbopack NFT can
+      // statically scope tracing to <cwd>/data/ instead of the whole project.
+      for (const suffix of ["", "-wal", "-shm"]) {
+        try {
+          if (
+            fs.existsSync(
+              path.join(process.cwd(), "data", "logs", `${key}.sqlite${suffix}`),
+            )
+          )
+            fs.unlinkSync(
+              path.join(process.cwd(), "data", "logs", `${key}.sqlite${suffix}`),
+            );
+        } catch {
+          /* ignore */
+        }
+      }
       removed++;
     }
   }
@@ -37,22 +45,26 @@ function purgeStats(): number {
   let removed = 0;
   for (const key of listShards("stat")) {
     if (key < cutoffKey) {
-      const file = path.join(dataRoot(), "stats", `${key}.sqlite`);
-      tryDelete(file);
+      // Inline literal path at every fs.* call site so Turbopack NFT can
+      // statically scope tracing to <cwd>/data/ instead of the whole project.
+      for (const suffix of ["", "-wal", "-shm"]) {
+        try {
+          if (
+            fs.existsSync(
+              path.join(process.cwd(), "data", "stats", `${key}.sqlite${suffix}`),
+            )
+          )
+            fs.unlinkSync(
+              path.join(process.cwd(), "data", "stats", `${key}.sqlite${suffix}`),
+            );
+        } catch {
+          /* ignore */
+        }
+      }
       removed++;
     }
   }
   return removed;
-}
-
-function tryDelete(file: string): void {
-  for (const f of [file, `${file}-wal`, `${file}-shm`]) {
-    try {
-      if (fs.existsSync(f)) fs.unlinkSync(f);
-    } catch {
-      /* ignore */
-    }
-  }
 }
 
 export function archiveOnce(): { logs: number; stats: number } {

@@ -33,6 +33,10 @@ export async function GET(req: Request): Promise<Response> {
     };
     if (m) {
       item.displayName = m.displayName;
+      item.name = m.displayName;
+      const input_modalities: string[] = ["text"];
+      if (m.vision) input_modalities.push("image");
+      item.architecture = { input_modalities };
       item.context_length = m.contextLength;
       item.max_tokens = m.maxTokens;
       item.vision = m.vision;

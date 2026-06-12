@@ -17,21 +17,12 @@ interface ShardEntry {
 const cache = new Map<string, ShardEntry>();
 const initialized = new Set<string>();
 
-function dataDir(): string {
-  // Use a literal string as the first path component so Turbopack can
-  // statically scope file tracing to <cwd>/data/ instead of the whole project.
-  return path.join(process.cwd(), "data");
-}
-
-function ensureDir(dir: string): void {
-  fs.mkdirSync(dir, { recursive: true });
-}
-
 function shardFile(kind: ShardKind, key: string): string {
-  const root = dataDir();
-  if (kind === "log") return path.join(root, "logs", `${key}.sqlite`);
-  if (kind === "stat") return path.join(root, "stats", `${key}.sqlite`);
-  return path.join(root, "archive", `${key}.sqlite`);
+  const subdir =
+    kind === "log" ? "logs" : kind === "stat" ? "stats" : "archive";
+  // Literal 'data' immediately after process.cwd() so Turbopack NFT scopes
+  // file tracing to <cwd>/data/ instead of the whole project.
+  return path.join(process.cwd(), "data", subdir, `${key}.sqlite`);
 }
 
 function evictIfNeeded(): void {
@@ -168,7 +159,10 @@ function openShard(kind: ShardKind, key: string): Database.Database {
     return entry.db;
   }
   const file = shardFile(kind, key);
-  ensureDir(path.dirname(file));
+  // Inline literal 'data' path so Turbopack NFT can statically scope tracing.
+  const subdir =
+    kind === "log" ? "logs" : kind === "stat" ? "stats" : "archive";
+  fs.mkdirSync(path.join(process.cwd(), "data", subdir), { recursive: true });
   const db = new Database(file);
   if (!initialized.has(cacheKey)) {
     applySchema(db, kind);
@@ -215,7 +209,8 @@ export const shardStore = {
 export function listShards(kind: ShardKind): string[] {
   const subdir =
     kind === "log" ? "logs" : kind === "stat" ? "stats" : "archive";
-  const root = path.join(dataDir(), subdir);
+  // Inline literal 'data' path so Turbopack NFT can statically scope tracing.
+  const root = path.join(process.cwd(), "data", subdir);
   if (!fs.existsSync(root)) return [];
   return fs
     .readdirSync(root)
