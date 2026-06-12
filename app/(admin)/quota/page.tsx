@@ -35,7 +35,7 @@ export default function QuotaPage() {
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">Quota Snapshots</h1>
       {loading && data.length === 0 ? (
-        <div className="text-muted-foreground text-sm">Loading...</div>
+        <div className="text-muted-foreground text-xs">Loading...</div>
       ) : (
         <DataTable
           idKey="providerId"

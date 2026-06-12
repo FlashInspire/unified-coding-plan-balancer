@@ -213,6 +213,7 @@ export default function ApiKeysPage() {
         <DataTable
           idKey="id"
           expandable
+          tableClassName="table-fixed"
           detailRender={(row) => {
             const k = row as unknown as ApiKeyRow;
             return <KeyCallLogs apiKeyId={k.id} />;
@@ -222,11 +223,12 @@ export default function ApiKeysPage() {
             {
               key: "enabled",
               label: "Status",
+              className: "w-[50px]",
               render: (r) => {
                 const k = r as unknown as ApiKeyRow;
                 return (
                   <span
-                    className={`inline-block h-2.5 w-2.5 rounded-full ${
+                    className={`inline-block h-2 w-2 rounded-full ${
                       k.enabled ? "bg-green-500" : "bg-gray-400"
                     }`}
                     title={k.enabled ? "Enabled" : "Disabled"}
@@ -237,6 +239,7 @@ export default function ApiKeysPage() {
             {
               key: "name",
               label: "Name",
+              className: "w-[180px]",
               render: (r) => {
                 const k = r as unknown as ApiKeyRow;
                 return (
@@ -252,12 +255,13 @@ export default function ApiKeysPage() {
             {
               key: "quota",
               label: "Quota",
+              className: "w-[60px]",
               render: (r) => {
                 const k = r as unknown as ApiKeyRow;
                 const pct = maxQuotaPercent(k);
                 return (
                   <span title={quotaTooltip(k)}>
-                    <CircularProgress value={pct} size={32} />
+                    <CircularProgress value={pct} size={28} />
                   </span>
                 );
               },
@@ -265,10 +269,11 @@ export default function ApiKeysPage() {
             {
               key: "lastUsedAt",
               label: "Last Used",
+              className: "w-[145px]",
               render: (r) => {
                 const k = r as unknown as ApiKeyRow;
                 return (
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">
                     {k.lastUsedAt
                       ? new Date(
                           k.lastUsedAt as unknown as string,

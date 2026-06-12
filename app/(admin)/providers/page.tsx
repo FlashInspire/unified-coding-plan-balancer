@@ -236,7 +236,7 @@ export default function ProvidersPage() {
     {
       key: "name",
       label: "Name",
-      className: "min-w-[180px]",
+      className: "w-[180px]",
       render: (row: Record<string, unknown>) => {
         const p = row as unknown as ProviderRow;
         return (
@@ -303,7 +303,7 @@ export default function ProvidersPage() {
     {
       key: "endpoints",
       label: "Endpoints",
-      className: "min-w-[260px]",
+      className: "w-[220px]",
       render: (row: Record<string, unknown>) => {
         const p = row as unknown as ProviderRow;
         return (
@@ -387,7 +387,7 @@ export default function ProvidersPage() {
             ))}
           </div>
         ) : data.length === 0 ? (
-          <div className="text-muted-foreground text-sm">No providers yet.</div>
+          <div className="text-muted-foreground text-xs">No providers yet.</div>
         ) : (
           <DataTable
             columns={columns}

@@ -307,6 +307,7 @@ export default function ModelsPage() {
     {
       key: "providerName",
       label: "Provider",
+      className: "w-[160px]",
       render: (row: ProviderTableRow) => (
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-medium">{row.providerName}</span>
@@ -324,14 +325,25 @@ export default function ModelsPage() {
     {
       key: "realModelId",
       label: "Real Model ID",
+      className: "w-[150px]",
       render: (row: ProviderTableRow) => (
-        <span className="font-mono text-xs">{row.realModelId}</span>
+        <span className="font-mono text-xs truncate block">
+          {row.realModelId}
+        </span>
       ),
     },
-    { key: "weight", label: "Weight" },
+    {
+      key: "weight",
+      label: "Weight",
+      className: "w-[60px]",
+      render: (row: ProviderTableRow) => (
+        <span className="text-xs">{row.weight}</span>
+      ),
+    },
     {
       key: "apiStyle",
       label: "API Style",
+      className: "w-[90px]",
       render: (row: ProviderTableRow) => (
         <Badge variant="outline" className="text-[10px] font-mono">
           {row.apiStyle}
@@ -341,6 +353,7 @@ export default function ModelsPage() {
     {
       key: "enabled",
       label: "Enabled",
+      className: "w-[65px]",
       render: (row: ProviderTableRow) =>
         row.configured ? (
           <Badge
@@ -467,6 +480,7 @@ export default function ModelsPage() {
                   columns={providerColumns}
                   data={providerTableData}
                   idKey={"providerId" as keyof ProviderTableRow}
+                  tableClassName="table-fixed"
                   actions={(row) =>
                     row.configured ? (
                       <>
