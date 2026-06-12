@@ -11,7 +11,9 @@ import { listShards } from "@/lib/metrics/shardStore";
 let timer: NodeJS.Timeout | null = null;
 
 function dataRoot(): string {
-  return path.resolve(process.cwd(), env.DATA_DIR);
+  // Use a literal string as the first path component so Turbopack can
+  // statically scope file tracing to <cwd>/data/ instead of the whole project.
+  return path.join(process.cwd(), "data");
 }
 
 function purgeLogs(): number {

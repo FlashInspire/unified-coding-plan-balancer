@@ -1,7 +1,6 @@
 /**
  * GET /v1/models — OpenAI-compatible model listing.
- * Returns deduplicated model_ids with extra_options containing all
- * configured model settings (non-null values only).
+ * Returns deduplicated model ids as HFModelItem-compatible objects.
  */
 import { extractBearer, verifyApiKey } from "@/lib/auth/apiKey";
 import { providerModelRepo } from "@/lib/repositories/providerModelRepo";
@@ -22,36 +21,37 @@ export async function GET(req: Request): Promise<Response> {
     ? await providerModelRepo.modelIdsForProvider(providerParam)
     : await providerModelRepo.distinctEnabledModelIds();
 
-  // Fetch full model rows to build extra_options
+  // Fetch full model rows
   const modelRows = await Promise.all(ids.map((id) => modelRepo.findById(id)));
 
   const data = modelRows.map((m) => {
-    const extra: Record<string, unknown> = {};
-    if (m) {
-      if (m.vision !== undefined) extra.vision = m.vision;
-      if (m.maxTokens !== undefined) extra.max_tokens = m.maxTokens;
-      if (m.contextLength !== undefined) extra.context_length = m.contextLength;
-      if (m.topP != null) extra.top_p = m.topP;
-      if (m.topK != null) extra.top_k = m.topK;
-      if (m.minP != null) extra.min_p = m.minP;
-      if (m.frequencyPenalty != null)
-        extra.frequency_penalty = m.frequencyPenalty;
-      if (m.presencePenalty != null) extra.presence_penalty = m.presencePenalty;
-      if (m.repetitionPenalty != null)
-        extra.repetition_penalty = m.repetitionPenalty;
-      if (m.enableThinking != null) extra.enable_thinking = m.enableThinking;
-      if (m.thinkingBudget != null) extra.thinking_budget = m.thinkingBudget;
-      if (m.reasoningEffort != null) extra.reasoning_effort = m.reasoningEffort;
-      if (m.includeReasoningInRequest !== undefined)
-        extra.include_reasoning_in_request = m.includeReasoningInRequest;
-    }
-    return {
+    const item: Record<string, unknown> = {
       id: m?.id ?? "unknown",
       object: "model",
       created: 0,
       owned_by: "unified-coding-plan-balancer",
-      extra_options: extra,
     };
+    if (m) {
+      item.displayName = m.displayName;
+      item.context_length = m.contextLength;
+      item.max_tokens = m.maxTokens;
+      item.vision = m.vision;
+      if (m.temperature !== null && m.temperature !== undefined)
+        item.temperature = m.temperature;
+      if (m.topP != null) item.top_p = m.topP;
+      if (m.topK != null) item.top_k = m.topK;
+      if (m.minP != null) item.min_p = m.minP;
+      if (m.frequencyPenalty != null)
+        item.frequency_penalty = m.frequencyPenalty;
+      if (m.presencePenalty != null) item.presence_penalty = m.presencePenalty;
+      if (m.repetitionPenalty != null)
+        item.repetition_penalty = m.repetitionPenalty;
+      if (m.reasoningEffort != null) item.reasoning_effort = m.reasoningEffort;
+      if (m.enableThinking != null) item.enable_thinking = m.enableThinking;
+      if (m.thinkingBudget != null) item.thinking_budget = m.thinkingBudget;
+      item.include_reasoning_in_request = m.includeReasoningInRequest;
+    }
+    return item;
   });
   return Response.json({ object: "list", data });
 }

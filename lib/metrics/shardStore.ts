@@ -18,8 +18,9 @@ const cache = new Map<string, ShardEntry>();
 const initialized = new Set<string>();
 
 function dataDir(): string {
-  const dir = env.DATA_DIR;
-  return path.resolve(process.cwd(), dir);
+  // Use a literal string as the first path component so Turbopack can
+  // statically scope file tracing to <cwd>/data/ instead of the whole project.
+  return path.join(process.cwd(), "data");
 }
 
 function ensureDir(dir: string): void {
