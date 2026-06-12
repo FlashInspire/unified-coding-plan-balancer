@@ -49,32 +49,31 @@ export function ModelList({
           </div>
         ) : (
           <div className="py-1">
-            {filtered.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => onSelect(m.id)}
-                className={cn(
-                  "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-accent/50",
-                  selectedId === m.id && "bg-accent",
-                )}
-              >
-                <span
+            {[...filtered]
+              .sort((a, b) =>
+                a.enabled === b.enabled ? 0 : a.enabled ? -1 : 1,
+              )
+              .map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => onSelect(m.id)}
                   className={cn(
-                    "h-2 w-2 rounded-full shrink-0",
-                    m.enabled ? "bg-green-500" : "bg-gray-400",
+                    "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-accent/50",
+                    selectedId === m.id && "bg-accent",
+                    !m.enabled && "opacity-50",
                   )}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium truncate">{m.displayName}</div>
-                  <div className="text-muted-foreground font-mono truncate">
-                    {m.id}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium truncate">{m.displayName}</div>
+                    <div className="text-muted-foreground font-mono truncate">
+                      {m.id}
+                    </div>
                   </div>
-                </div>
-                <Badge variant="secondary" className="text-[10px] shrink-0">
-                  {providerCounts[m.id] ?? 0}p
-                </Badge>
-              </button>
-            ))}
+                  <Badge variant="secondary" className="text-[10px] shrink-0">
+                    {providerCounts[m.id] ?? 0}p
+                  </Badge>
+                </button>
+              ))}
           </div>
         )}
       </div>

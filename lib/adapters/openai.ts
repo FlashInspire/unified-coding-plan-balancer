@@ -32,8 +32,12 @@ function body(req: NormalizedChatRequest, stream: boolean) {
   out.stream = stream;
   // OpenAI-compatible APIs only include `usage` in the final streaming chunk
   // when stream_options is set. Without this, token counts are always 0.
+  // ALWAYS force include_usage: true regardless of what the client requests.
   if (stream) {
-    out.stream_options = { include_usage: true };
+    out.stream_options = {
+      ...(out.stream_options as Record<string, unknown>),
+      include_usage: true,
+    };
   }
 
   return out;

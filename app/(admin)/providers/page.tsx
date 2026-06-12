@@ -240,16 +240,7 @@ export default function ProvidersPage() {
         const p = row as unknown as ProviderRow;
         return (
           <div className="flex items-center gap-2">
-            <span
-              className={`inline-block h-2 w-2 rounded-full shrink-0 ${
-                p.enabled ? "bg-green-500" : "bg-gray-400"
-              }`}
-              title={p.enabled ? "Enabled" : "Disabled"}
-            />
             <span className="font-medium text-xs">{p.name}</span>
-            <span className="text-muted-foreground text-xs font-mono">
-              {p.id}
-            </span>
           </div>
         );
       },
@@ -398,9 +389,19 @@ export default function ProvidersPage() {
         ) : (
           <DataTable
             columns={columns}
-            data={data as unknown as Record<string, unknown>[]}
+            data={
+              [...data]
+                .sort((a, b) =>
+                  a.enabled === b.enabled ? 0 : a.enabled ? -1 : 1,
+                )
+                .map((d) => ({ ...d })) as unknown as Record<string, unknown>[]
+            }
             idKey="id"
             tableClassName="table-fixed"
+            rowClassName={(row) => {
+              const p = row as unknown as ProviderRow;
+              return !p.enabled ? "opacity-50" : undefined;
+            }}
             actions={(row) => {
               const p = row as unknown as ProviderRow;
               return (

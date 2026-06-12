@@ -218,37 +218,24 @@ export default function ApiKeysPage() {
             const k = row as unknown as ApiKeyRow;
             return <KeyCallLogs apiKeyId={k.id} />;
           }}
-          data={data as unknown as Record<string, unknown>[]}
+          data={
+            [...data]
+              .sort((a, b) =>
+                a.enabled === b.enabled ? 0 : a.enabled ? -1 : 1,
+              )
+              .map((d) => ({ ...d })) as unknown as Record<string, unknown>[]
+          }
           columns={[
-            {
-              key: "enabled",
-              label: "Status",
-              className: "w-[50px]",
-              render: (r) => {
-                const k = r as unknown as ApiKeyRow;
-                return (
-                  <span
-                    className={`inline-block h-2 w-2 rounded-full ${
-                      k.enabled ? "bg-green-500" : "bg-gray-400"
-                    }`}
-                    title={k.enabled ? "Enabled" : "Disabled"}
-                  />
-                );
-              },
-            },
             {
               key: "name",
               label: "Name",
-              className: "w-[180px]",
+              className: "w-[220px]",
               render: (r) => {
                 const k = r as unknown as ApiKeyRow;
                 return (
-                  <div className="min-w-0">
-                    <span className="font-medium text-xs">{k.name}</span>
-                    <span className="text-muted-foreground text-xs ml-2 font-mono">
-                      {k.id.slice(0, 8)}…
-                    </span>
-                  </div>
+                  <span className="text-xs font-medium truncate block">
+                    {k.name}
+                  </span>
                 );
               },
             },
@@ -262,9 +249,9 @@ export default function ApiKeysPage() {
                 return (
                   <span
                     title={quotaTooltip(k)}
-                    className="flex items-center gap-1.5"
+                    className="inline-flex items-center gap-1"
                   >
-                    <CircularProgress value={pct} size={18} showValue={false} />
+                    <CircularProgress value={pct} size={14} showValue={false} />
                     <span className="text-xs tabular-nums">
                       {pct != null ? `${Math.round(pct)}%` : "∞"}
                     </span>
@@ -290,6 +277,10 @@ export default function ApiKeysPage() {
               },
             },
           ]}
+          rowClassName={(row) => {
+            const k = row as unknown as ApiKeyRow;
+            return !k.enabled ? "opacity-50" : undefined;
+          }}
           actions={(row) => {
             const k = row as unknown as ApiKeyRow;
             return (
