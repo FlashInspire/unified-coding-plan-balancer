@@ -21,8 +21,15 @@ model Model {
   temperature               Float?
   topP                      Float?
   topK                      Int?
+  minP                      Float?
+  frequencyPenalty          Float?
+  presencePenalty           Float?
+  repetitionPenalty         Float?
   reasoningEffort           String? // "low" | "medium" | "high" | null
   includeReasoningInRequest Boolean  @default(false)
+  vision                    Boolean  @default(false)
+  enableThinking            Boolean?
+  thinkingBudget            Int?
   enabled                   Boolean  @default(true)
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
@@ -53,7 +60,7 @@ model Provider {
   rollingQuotaResetAt         DateTime?
   weekQuotaResetAt            DateTime?
   monthQuotaResetAt           DateTime?
-  rollingHourOffset           Int       @default(0) // 0–23; rolling reset snaps to hours ≡ offset (mod 5)
+  planStartTime               DateTime? // anchor for rolling (every 5h) & monthly resets; null = use createdAt
   // Usage mode: "request" = count requests (default), "token" = count tokens
   usageMode                   String    @default("request")
   // Token-mode counters (only meaningful when usageMode = "token").
@@ -77,10 +84,10 @@ model Provider {
 // ProviderModel — instance of a Model on a specific Provider, with overrides.
 // -----------------------------------------------------------------------------
 model ProviderModel {
-  id          String @id @default(cuid())
+  id          String  @id @default(cuid())
   modelId     String
   providerId  String
-  realModelId String // upstream's true model id
+  realModelId String? // upstream's true model id; null = use Model.id
 
   // All overrides are optional; NULL inherits from Model.
   contextLengthOverride             Int?
@@ -145,4 +152,20 @@ model ProviderQuotaSnapshot {
   healthy      Boolean  @default(true)
 
   provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+}
+
+// -----------------------------------------------------------------------------
+// StickyRoute — per-API-key sticky routing to maximize KV-cache hit rates.
+// Composite PK (apiKeyId, modelId) ensures one sticky entry per key+model.
+// Expired entries are cleaned up lazily on read and by a periodic sweep.
+// -----------------------------------------------------------------------------
+model StickyRoute {
+  apiKeyId   String
+  modelId    String
+  providerId String
+  pmId       String
+  expiresAt  DateTime
+
+  @@id([apiKeyId, modelId])
+  @@index([expiresAt])
 }

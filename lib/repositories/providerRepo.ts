@@ -15,7 +15,7 @@ export interface ProviderInput {
   rollingQuotaUsed?: number;
   weekQuotaUsed?: number;
   monthQuotaUsed?: number;
-  rollingHourOffset?: number;
+  planStartTime?: Date | null;
   usageMode?: string;
   enabled?: boolean;
   quotaRunningOut?: boolean;
@@ -40,7 +40,7 @@ export interface ProviderPatch {
   weekOutputTokensUsed?: number;
   monthCacheInputTokensUsed?: number;
   monthOutputTokensUsed?: number;
-  rollingHourOffset?: number;
+  planStartTime?: Date | null;
   usageMode?: string;
   enabled?: boolean;
   quotaRunningOut?: boolean;
@@ -72,7 +72,7 @@ export const providerRepo = {
         rollingQuotaUsed: input.rollingQuotaUsed ?? 0,
         weekQuotaUsed: input.weekQuotaUsed ?? 0,
         monthQuotaUsed: input.monthQuotaUsed ?? 0,
-        rollingHourOffset: input.rollingHourOffset ?? 0,
+        planStartTime: input.planStartTime ?? null,
         usageMode: input.usageMode ?? "request",
         enabled: input.enabled ?? true,
         quotaRunningOut: input.quotaRunningOut ?? false,
@@ -135,8 +135,8 @@ export const providerRepo = {
         ...(patch.monthOutputTokensUsed !== undefined
           ? { monthOutputTokensUsed: patch.monthOutputTokensUsed }
           : {}),
-        ...(patch.rollingHourOffset !== undefined
-          ? { rollingHourOffset: patch.rollingHourOffset }
+        ...(patch.planStartTime !== undefined
+          ? { planStartTime: patch.planStartTime }
           : {}),
         ...(patch.usageMode !== undefined
           ? { usageMode: patch.usageMode }

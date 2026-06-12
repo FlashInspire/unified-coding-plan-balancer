@@ -34,7 +34,7 @@ function mkCandidate(
     rollingQuotaResetAt: null,
     weekQuotaResetAt: null,
     monthQuotaResetAt: null,
-    rollingHourOffset: 0,
+    planStartTime: null,
     usageMode: "request",
     rollingCacheInputTokensUsed: 0,
     rollingOutputTokensUsed: 0,

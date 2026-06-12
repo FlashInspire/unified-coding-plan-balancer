@@ -6,9 +6,10 @@
  * timestamp has been reached; when it has, the corresponding counter
  * is zeroed and the next reset timestamp is computed.
  *
- * Rolling resets snap to hours where (hour - offset) % 5 === 0.
- * Weekly resets fire at Monday 00:00.
- * Monthly resets fire at the 1st day 00:00.
+ * Rolling resets fire every 5 hours, anchored to the provider's
+ * planStartTime (falls back to createdAt when null).
+ * Monthly resets fire on the same day-of-month as planStartTime.
+ * Weekly resets fire at Monday 00:00 UTC (unchanged).
  */
 import { prisma } from "@/lib/prisma";
 import { resetQuotaRetries } from "@/lib/routing/selectCandidate";
@@ -20,26 +21,27 @@ import { resetQuotaRetries } from "@/lib/routing/selectCandidate";
 export type ResetDimension = "rolling" | "week" | "month";
 
 const ROLLING_INTERVAL_HOURS = 5;
+const ROLLING_INTERVAL_MS = ROLLING_INTERVAL_HOURS * 3_600_000;
 
 /**
  * Compute the next reset timestamp for a given dimension.
  *
- * @param dimension  Which quota dimension
- * @param now        Current time (injectable for testing)
- * @param rollingHourOffset  0–23; rolling resets snap to hours ≡ offset (mod 5)
+ * @param dimension     Which quota dimension
+ * @param now           Current time (injectable for testing)
+ * @param planStartTime  Provider's plan start anchor (required for rolling & month)
  */
 export function computeNextResetAt(
   dimension: ResetDimension,
   now: Date,
-  rollingHourOffset = 0,
+  planStartTime: Date,
 ): Date {
   switch (dimension) {
     case "rolling":
-      return computeNextRollingReset(now, rollingHourOffset);
+      return computeNextRollingReset(now, planStartTime);
     case "week":
       return computeNextWeekReset(now);
     case "month":
-      return computeNextMonthReset(now);
+      return computeNextMonthReset(now, planStartTime);
   }
 }
 
@@ -47,27 +49,19 @@ export function computeNextResetAt(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function computeNextRollingReset(now: Date, offset: number): Date {
-  // Target: the next hour h where (h - offset) % 5 === 0.
-  // Work entirely in UTC to avoid timezone issues.
+function computeNextRollingReset(now: Date, planStartTime: Date): Date {
+  const elapsed = now.getTime() - planStartTime.getTime();
 
-  // Start from the beginning of the next hour after now.
-  const utcMs = now.getTime();
-  const msInHour = 3_600_000;
-  // Floor to current hour, then add one full hour
-  const nextHourMs = Math.floor(utcMs / msInHour) * msInHour + msInHour;
+  // If plan hasn't started yet, the first reset is at planStartTime
+  if (elapsed < 0) return new Date(planStartTime);
 
-  // Scan forward hour by hour (at most 5 hours) until we hit a valid slot
-  for (let i = 0; i <= ROLLING_INTERVAL_HOURS; i++) {
-    const candidateMs = nextHourMs + i * msInHour;
-    const h = new Date(candidateMs).getUTCHours();
-    if (h % ROLLING_INTERVAL_HOURS === offset % ROLLING_INTERVAL_HOURS) {
-      return new Date(candidateMs);
-    }
-  }
+  // How many full 5-hour intervals have elapsed since planStartTime
+  const intervalsElapsed = Math.floor(elapsed / ROLLING_INTERVAL_MS);
 
-  // Fallback (should never happen): now + 5h
-  return new Date(utcMs + ROLLING_INTERVAL_HOURS * msInHour);
+  // Next reset is at the start of the next interval
+  return new Date(
+    planStartTime.getTime() + (intervalsElapsed + 1) * ROLLING_INTERVAL_MS,
+  );
 }
 
 function computeNextWeekReset(now: Date): Date {
@@ -87,19 +81,33 @@ function computeNextWeekReset(now: Date): Date {
   return d;
 }
 
-function computeNextMonthReset(now: Date): Date {
-  // Next 1st day of month 00:00 UTC
-  const d = new Date(now);
-  d.setUTCHours(0, 0, 0, 0);
+function lastDayOfMonth(year: number, month: number): number {
+  // month is 0-indexed; day 0 of next month = last day of this month
+  return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+}
 
-  if (d.getUTCDate() === 1 && now.getTime() <= d.getTime()) {
-    // Exactly midnight on the 1st — stay
-    return d;
-  }
+function computeNextMonthReset(now: Date, planStartTime: Date): Date {
+  const targetDay = planStartTime.getUTCDate();
+  const h = planStartTime.getUTCHours();
+  const m = planStartTime.getUTCMinutes();
+  const s = planStartTime.getUTCSeconds();
 
-  // Move to 1st of next month
-  d.setUTCMonth(d.getUTCMonth() + 1, 1);
-  return d;
+  // Try this month first
+  const thisMonthMax = lastDayOfMonth(now.getUTCFullYear(), now.getUTCMonth());
+  const thisMonthDay = Math.min(targetDay, thisMonthMax);
+  const candidate = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), thisMonthDay, h, m, s, 0),
+  );
+  if (candidate.getTime() > now.getTime()) return candidate;
+
+  // Next month
+  const nextMonth = now.getUTCMonth() + 1;
+  const nextYear =
+    nextMonth > 11 ? now.getUTCFullYear() + 1 : now.getUTCFullYear();
+  const nextMonthIdx = nextMonth % 12;
+  const nextMonthMax = lastDayOfMonth(nextYear, nextMonthIdx);
+  const nextMonthDay = Math.min(targetDay, nextMonthMax);
+  return new Date(Date.UTC(nextYear, nextMonthIdx, nextMonthDay, h, m, s, 0));
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +127,8 @@ async function tick(): Promise<void> {
       rollingQuota: true,
       rollingQuotaUsed: true,
       rollingQuotaResetAt: true,
-      rollingHourOffset: true,
+      planStartTime: true,
+      createdAt: true,
       weekQuota: true,
       weekQuotaUsed: true,
       weekQuotaResetAt: true,
@@ -140,6 +149,7 @@ async function tick(): Promise<void> {
     providers.map((p) => {
       const updates: Record<string, unknown> = {};
       let anyReset = false;
+      const anchor = p.planStartTime ?? p.createdAt; // plan start or creation time
 
       // Rolling — reset if past due, or backfill if resetAt is missing
       // quota = 0 or null means unlimited → skip scheduling
@@ -154,14 +164,14 @@ async function tick(): Promise<void> {
           updates.rollingQuotaResetAt = computeNextResetAt(
             "rolling",
             now,
-            p.rollingHourOffset,
+            anchor,
           );
           anyReset = true;
         } else if (!p.rollingQuotaResetAt) {
           updates.rollingQuotaResetAt = computeNextResetAt(
             "rolling",
             now,
-            p.rollingHourOffset,
+            anchor,
           );
         }
       }
@@ -173,10 +183,10 @@ async function tick(): Promise<void> {
           updates.weekQuotaUsed = 0;
           updates.weekCacheInputTokensUsed = 0;
           updates.weekOutputTokensUsed = 0;
-          updates.weekQuotaResetAt = computeNextResetAt("week", now);
+          updates.weekQuotaResetAt = computeNextResetAt("week", now, anchor);
           anyReset = true;
         } else if (!p.weekQuotaResetAt) {
-          updates.weekQuotaResetAt = computeNextResetAt("week", now);
+          updates.weekQuotaResetAt = computeNextResetAt("week", now, anchor);
         }
       }
 
@@ -187,10 +197,10 @@ async function tick(): Promise<void> {
           updates.monthQuotaUsed = 0;
           updates.monthCacheInputTokensUsed = 0;
           updates.monthOutputTokensUsed = 0;
-          updates.monthQuotaResetAt = computeNextResetAt("month", now);
+          updates.monthQuotaResetAt = computeNextResetAt("month", now, anchor);
           anyReset = true;
         } else if (!p.monthQuotaResetAt) {
-          updates.monthQuotaResetAt = computeNextResetAt("month", now);
+          updates.monthQuotaResetAt = computeNextResetAt("month", now, anchor);
         }
       }
 

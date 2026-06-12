@@ -6,7 +6,7 @@ import { providerModelRepo } from "@/lib/repositories/providerModelRepo";
 const createSchema = z.object({
   providerId: z.string().min(1),
   modelId: z.string().min(1),
-  realModelId: z.string().min(1),
+  realModelId: z.string().nullable().optional(),
   contextLengthOverride: z.number().int().positive().nullable().optional(),
   maxTokensOverride: z.number().int().positive().nullable().optional(),
   temperatureOverride: z.number().nullable().optional(),

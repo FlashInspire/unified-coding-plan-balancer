@@ -14,6 +14,11 @@ import {
 } from "@/lib/adapters/base";
 import { getAdapter } from "@/lib/adapters";
 import { UpstreamError } from "@/lib/adapters/openai";
+import {
+  translateRequestExtraParams,
+  translateResponse,
+  translateStream,
+} from "@/lib/adapters/translate/cross-protocol";
 import { metricsBuffer, type RequestLogRecord } from "@/lib/metrics/buffer";
 import { logRequestStart, logRequestUpdate } from "@/lib/metrics/flusher";
 import { modelRepo } from "@/lib/repositories/modelRepo";
@@ -26,6 +31,7 @@ import {
   markTransientFailure,
   selectCandidates,
 } from "@/lib/routing/selectCandidate";
+import { getStickyProvider, setStickyProvider } from "@/lib/routing/sticky";
 import { resolveModelParams } from "@/lib/routing/resolveParams";
 import { activeRequests } from "@/lib/routing/activeRequests";
 import { env } from "@/lib/env";
@@ -147,6 +153,29 @@ function trackQuotaExhaustedRetry(c: RoutingCandidate): void {
   }
 }
 
+/**
+ * Determine which API mode a candidate provider supports for the given
+ * client protocol. Returns the mode to use for the upstream call, or null
+ * if the provider has no usable endpoint at all.
+ *
+ * Prefers same-protocol (returns `preferred` when available), otherwise
+ * falls back to the other protocol if the provider has it configured.
+ */
+function candidateApiMode(
+  c: RoutingCandidate,
+  preferred: ApiMode,
+): ApiMode | null {
+  const p = c.provider;
+  if (preferred === "openai") {
+    if (p.baseUrlOpenai) return "openai";
+    if (p.baseUrlAnthropic) return "anthropic";
+  } else {
+    if (p.baseUrlAnthropic) return "anthropic";
+    if (p.baseUrlOpenai) return "openai";
+  }
+  return null;
+}
+
 export async function dispatchChat(
   modelId: string,
   messages: NormalizedChatRequest["messages"],
@@ -155,13 +184,29 @@ export async function dispatchChat(
   extra?: Pick<NormalizedChatRequest, "extraParams" | "rawMessages">,
 ): Promise<DispatchSuccess> {
   const model = await loadModel(modelId);
-  const all = await providerModelRepo.findCandidates(modelId, ctx.apiModeIn);
-  const sorted = selectCandidates(all);
+  // First try same-protocol candidates.
+  let all = await providerModelRepo.findCandidates(modelId, ctx.apiModeIn);
+  let sorted = selectCandidates(all);
+  // If no same-protocol candidates, retry including cross-protocol.
+  if (sorted.length === 0) {
+    all = await providerModelRepo.findCandidates(modelId, ctx.apiModeIn, true);
+    sorted = selectCandidates(all);
+  }
   if (sorted.length === 0) {
     throw new NoCandidateError(
       modelId,
       all.length > 0 ? "all providers quota exhausted" : undefined,
     );
+  }
+
+  // Apply sticky routing: move the last-used provider to the front.
+  const sticky = await getStickyProvider(ctx.apiKeyId, modelId);
+  if (sticky) {
+    const idx = sorted.findIndex((c) => c.provider.id === sticky.providerId);
+    if (idx > 0) {
+      const [stickyCandidate] = sorted.splice(idx, 1);
+      sorted.unshift(stickyCandidate);
+    }
   }
 
   const failures: { providerId: string; status: number; message: string }[] =
@@ -170,7 +215,29 @@ export async function dispatchChat(
   for (const c of sorted) {
     trackQuotaExhaustedRetry(c);
     const params = resolveModelParams(model, c.provider, c.pm, user);
-    const adapter = getAdapter(ctx.apiModeIn);
+    // Determine which protocol this candidate actually supports.
+    const apiModeOut = candidateApiMode(c, ctx.apiModeIn) ?? ctx.apiModeIn;
+    const isCrossProtocol = apiModeOut !== ctx.apiModeIn;
+    const adapter = getAdapter(apiModeOut);
+    // Translate extraParams when crossing protocols.
+    const effectiveExtra = isCrossProtocol
+      ? translateRequestExtraParams(
+          {
+            messages,
+            stream: false,
+            realModelId: params.realModelId,
+            maxTokens: params.maxTokens,
+            temperature: params.temperature,
+            topP: params.topP,
+            topK: params.topK,
+            reasoningEffort: params.reasoningEffort,
+            ...(extra?.extraParams ? { extraParams: extra.extraParams } : {}),
+          },
+          ctx.apiModeIn,
+          apiModeOut,
+        )
+      : null;
+    const extraParams = effectiveExtra?.extraParams ?? extra?.extraParams;
     const req: NormalizedChatRequest = {
       messages,
       stream: false,
@@ -180,10 +247,10 @@ export async function dispatchChat(
       topP: params.topP,
       topK: params.topK,
       reasoningEffort: params.reasoningEffort,
-      stop: extra?.extraParams?.stop as string[] | undefined,
-      tools: extra?.extraParams?.tools,
-      tool_choice: extra?.extraParams?.tool_choice,
-      extraParams: extra?.extraParams,
+      stop: extraParams?.stop as string[] | undefined,
+      tools: extraParams?.tools,
+      tool_choice: extraParams?.tool_choice,
+      extraParams,
       rawMessages: extra?.rawMessages,
     };
     const started = Date.now();
@@ -196,7 +263,7 @@ export async function dispatchChat(
       providerName: c.provider.name,
       realModelId: params.realModelId,
       apiModeIn: ctx.apiModeIn,
-      apiModeOut: ctx.apiModeIn,
+      apiModeOut,
       stream: false,
       status: 0,
       errorCode: null,
@@ -212,10 +279,22 @@ export async function dispatchChat(
     });
     try {
       const resp = await adapter.chat(
-        resolveProvider(c.provider, ctx.apiModeIn),
+        resolveProvider(c.provider, apiModeOut),
         req,
         ctx.signal,
       );
+      // Translate response back to client's protocol if cross-protocol.
+      if (isCrossProtocol) {
+        const translated = translateResponse(
+          resp,
+          modelId,
+          apiModeOut,
+          ctx.apiModeIn,
+        );
+        // Replace rawMessage with the translated format so the route handler
+        // can build the final response in the client's protocol.
+        (resp as unknown as Record<string, unknown>).rawMessage = translated;
+      }
       const latency = Date.now() - started;
       emitMetrics({
         requestId: requestId ?? undefined,
@@ -226,7 +305,7 @@ export async function dispatchChat(
         providerName: c.provider.name,
         realModelId: params.realModelId,
         apiModeIn: ctx.apiModeIn,
-        apiModeOut: ctx.apiModeIn,
+        apiModeOut,
         stream: false,
         status: 200,
         errorCode: null,
@@ -264,6 +343,15 @@ export async function dispatchChat(
       } catch {
         /* never block successful response on quota counter write */
       }
+      // Record sticky routing for future requests from this key.
+      // Fire-and-forget — never block the response on sticky write.
+      setStickyProvider(
+        ctx.apiKeyId,
+        modelId,
+        c.provider.id,
+        c.pm.id,
+        env.STICKY_TTL_MS,
+      ).catch(() => {});
       return { response: resp, provider: c.provider, pm: c.pm, params };
     } catch (err) {
       activeRequests.decr(c.provider.id);
@@ -279,7 +367,7 @@ export async function dispatchChat(
         providerName: c.provider.name,
         realModelId: params.realModelId,
         apiModeIn: ctx.apiModeIn,
-        apiModeOut: ctx.apiModeIn,
+        apiModeOut: apiModeOut,
         stream: false,
         status: status || 500,
         errorCode: message.slice(0, 200),
@@ -310,6 +398,10 @@ export interface DispatchStreamResult {
   provider: ProviderRow;
   pm: ProviderModelRow;
   params: ResolvedParams;
+  /** When cross-protocol, this is the upstream's protocol. The route handler
+   *  should skip rawDelta/rawAnthropicEvent passthrough and use normalized
+   *  fields only. undefined when same-protocol (passthrough mode). */
+  apiModeOut?: ApiMode;
 }
 
 export async function dispatchChatStream(
@@ -320,13 +412,29 @@ export async function dispatchChatStream(
   extra?: Pick<NormalizedChatRequest, "extraParams" | "rawMessages">,
 ): Promise<DispatchStreamResult> {
   const model = await loadModel(modelId);
-  const all = await providerModelRepo.findCandidates(modelId, ctx.apiModeIn);
-  const sorted = selectCandidates(all);
+  // First try same-protocol candidates.
+  let all = await providerModelRepo.findCandidates(modelId, ctx.apiModeIn);
+  let sorted = selectCandidates(all);
+  // If no same-protocol candidates, retry including cross-protocol.
+  if (sorted.length === 0) {
+    all = await providerModelRepo.findCandidates(modelId, ctx.apiModeIn, true);
+    sorted = selectCandidates(all);
+  }
   if (sorted.length === 0) {
     throw new NoCandidateError(
       modelId,
       all.length > 0 ? "all providers quota exhausted" : undefined,
     );
+  }
+
+  // Apply sticky routing: move the last-used provider to the front.
+  const sticky = await getStickyProvider(ctx.apiKeyId, modelId);
+  if (sticky) {
+    const idx = sorted.findIndex((c) => c.provider.id === sticky.providerId);
+    if (idx > 0) {
+      const [stickyCandidate] = sorted.splice(idx, 1);
+      sorted.unshift(stickyCandidate);
+    }
   }
 
   // For streaming we commit to the first candidate (we can't easily fall back
@@ -338,7 +446,29 @@ export async function dispatchChatStream(
   for (const c of sorted) {
     trackQuotaExhaustedRetry(c);
     const params = resolveModelParams(model, c.provider, c.pm, user);
-    const adapter = getAdapter(ctx.apiModeIn);
+    // Determine which protocol this candidate actually supports.
+    const apiModeOut = candidateApiMode(c, ctx.apiModeIn) ?? ctx.apiModeIn;
+    const isCrossProtocol = apiModeOut !== ctx.apiModeIn;
+    const adapter = getAdapter(apiModeOut);
+    // Translate extraParams when crossing protocols.
+    const effectiveExtra = isCrossProtocol
+      ? translateRequestExtraParams(
+          {
+            messages,
+            stream: true,
+            realModelId: params.realModelId,
+            maxTokens: params.maxTokens,
+            temperature: params.temperature,
+            topP: params.topP,
+            topK: params.topK,
+            reasoningEffort: params.reasoningEffort,
+            ...(extra?.extraParams ? { extraParams: extra.extraParams } : {}),
+          },
+          ctx.apiModeIn,
+          apiModeOut,
+        )
+      : null;
+    const extraParams = effectiveExtra?.extraParams ?? extra?.extraParams;
     const req: NormalizedChatRequest = {
       messages,
       stream: true,
@@ -348,10 +478,10 @@ export async function dispatchChatStream(
       topP: params.topP,
       topK: params.topK,
       reasoningEffort: params.reasoningEffort,
-      stop: extra?.extraParams?.stop as string[] | undefined,
-      tools: extra?.extraParams?.tools,
-      tool_choice: extra?.extraParams?.tool_choice,
-      extraParams: extra?.extraParams,
+      stop: extraParams?.stop as string[] | undefined,
+      tools: extraParams?.tools,
+      tool_choice: extraParams?.tool_choice,
+      extraParams,
       rawMessages: extra?.rawMessages,
     };
     const started = Date.now();
@@ -364,7 +494,7 @@ export async function dispatchChatStream(
       providerName: c.provider.name,
       realModelId: params.realModelId,
       apiModeIn: ctx.apiModeIn,
-      apiModeOut: ctx.apiModeIn,
+      apiModeOut,
       stream: true,
       status: 0,
       errorCode: null,
@@ -380,7 +510,7 @@ export async function dispatchChatStream(
     });
     try {
       const src = adapter.chatStream(
-        resolveProvider(c.provider, ctx.apiModeIn),
+        resolveProvider(c.provider, apiModeOut),
         req,
         ctx.signal,
       );
@@ -394,7 +524,13 @@ export async function dispatchChatStream(
         pm: c.pm,
         params,
       });
-      return { iterator: wrapped, provider: c.provider, pm: c.pm, params };
+      return {
+        iterator: wrapped,
+        provider: c.provider,
+        pm: c.pm,
+        params,
+        ...(isCrossProtocol ? { apiModeOut } : {}),
+      };
     } catch (err) {
       activeRequests.decr(c.provider.id);
       const status = err instanceof UpstreamError ? err.status : 0;
@@ -509,6 +645,15 @@ function wrapStream(
           } catch {
             /* never block stream completion on quota counter write */
           }
+          // Record sticky routing for future requests from this key.
+          // Fire-and-forget — never block the stream on sticky write.
+          setStickyProvider(
+            ctx.ctx.apiKeyId,
+            ctx.modelId,
+            ctx.provider.id,
+            ctx.pm.id,
+            env.STICKY_TTL_MS,
+          ).catch(() => {});
         }
         // Touch finishReason to avoid "unused" lint complaint.
         void finishReason;

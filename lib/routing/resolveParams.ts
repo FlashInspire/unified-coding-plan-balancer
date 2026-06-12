@@ -38,7 +38,7 @@ export function resolveModelParams(
   return {
     // Not user-overridable
     contextLength: pm.contextLengthOverride ?? model.contextLength,
-    realModelId: pm.realModelId,
+    realModelId: pm.realModelId ?? model.id,
 
     maxTokens: finalMax,
 

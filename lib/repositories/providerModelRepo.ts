@@ -5,7 +5,7 @@ import { activeRequests } from "@/lib/routing/activeRequests";
 export interface ProviderModelInput {
   modelId: string;
   providerId: string;
-  realModelId: string;
+  realModelId?: string | null;
   contextLengthOverride?: number | null;
   maxTokensOverride?: number | null;
   temperatureOverride?: number | null;
@@ -45,7 +45,7 @@ export const providerModelRepo = {
       data: {
         modelId: input.modelId,
         providerId: input.providerId,
-        realModelId: input.realModelId,
+        realModelId: input.realModelId ?? null,
         contextLengthOverride: input.contextLengthOverride ?? null,
         maxTokensOverride: input.maxTokensOverride ?? null,
         temperatureOverride: input.temperatureOverride ?? null,
@@ -100,10 +100,14 @@ export const providerModelRepo = {
   async findCandidates(
     modelId: string,
     apiModeIn: ApiMode,
+    includeAllProtocols = false,
   ): Promise<RoutingCandidate[]> {
     // Build the Prisma filter based on which baseUrl the protocol requires.
-    const protocolFilter =
-      apiModeIn === "openai"
+    // When includeAllProtocols is true, skip the protocol filter so that
+    // cross-protocol candidates are also returned.
+    const protocolFilter = includeAllProtocols
+      ? {}
+      : apiModeIn === "openai"
         ? { baseUrlOpenai: { not: null } }
         : { baseUrlAnthropic: { not: null } };
 

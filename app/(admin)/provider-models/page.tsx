@@ -24,7 +24,6 @@ const PM_FIELDS_BASE = [
     name: "realModelId",
     label: "Upstream Real Model ID",
     type: "text" as const,
-    required: true,
   },
   {
     name: "maxTokensOverride",

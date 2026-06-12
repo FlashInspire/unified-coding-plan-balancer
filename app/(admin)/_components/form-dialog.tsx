@@ -92,7 +92,7 @@ export function FormDialog({
       )}
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-lg border bg-background p-5 shadow-lg">
+          <div className="w-full max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg border bg-background p-5 shadow-lg">
             <h2 className="text-lg font-semibold mb-4">{title}</h2>
             <form onSubmit={handleSubmit} className="space-y-3">
               {fields.map((f) => (

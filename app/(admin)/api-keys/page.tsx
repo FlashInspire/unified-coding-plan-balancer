@@ -6,6 +6,7 @@ import { FormDialog } from "../_components/form-dialog";
 import { apiFetch } from "../_components/api";
 import type { ApiKeyRow } from "@/lib/types";
 import type { RecentLogRow } from "@/lib/metrics/queryRouter";
+import type { TokenUsageSummary } from "@/lib/metrics/queryRouter";
 
 interface CreatedApiKey {
   id: string;
@@ -140,6 +141,11 @@ function KeyDetail({
 }) {
   const [logs, setLogs] = useState<RecentLogRow[]>([]);
   const [logsLoading, setLogsLoading] = useState(true);
+  const [tokenPeriod, setTokenPeriod] = useState<"day" | "week" | "month">(
+    "day",
+  );
+  const [tokenUsage, setTokenUsage] = useState<TokenUsageSummary[]>([]);
+  const [tokenLoading, setTokenLoading] = useState(true);
 
   const loadLogs = useCallback(async () => {
     setLogsLoading(true);
@@ -155,9 +161,36 @@ function KeyDetail({
     }
   }, [apiKey.id]);
 
+  const loadTokenUsage = useCallback(
+    async (period: "day" | "week" | "month") => {
+      setTokenLoading(true);
+      try {
+        const r = await apiFetch<{ data: TokenUsageSummary[] }>(
+          `/api/admin/api-keys/${apiKey.id}/usage?period=${period}&months=3`,
+        );
+        setTokenUsage(r.data);
+      } catch {
+        setTokenUsage([]);
+      } finally {
+        setTokenLoading(false);
+      }
+    },
+    [apiKey.id],
+  );
+
   useEffect(() => {
     void loadLogs();
   }, [loadLogs]);
+
+  useEffect(() => {
+    void loadTokenUsage(tokenPeriod);
+  }, [loadTokenUsage, tokenPeriod]);
+
+  function formatTokens(n: number): string {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+    return String(n);
+  }
 
   return (
     <div className="space-y-4 text-sm">
@@ -172,6 +205,80 @@ function KeyDetail({
         >
           Delete
         </button>
+      </div>
+
+      {/* Token Usage Summary */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="font-medium text-xs uppercase tracking-wide text-muted-foreground">
+            Token Usage
+          </span>
+          <div className="flex gap-1">
+            {(["day", "week", "month"] as const).map((p) => (
+              <button
+                key={p}
+                className={`text-xs px-2 py-0.5 rounded ${
+                  tokenPeriod === p
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:underline"
+                }`}
+                onClick={() => setTokenPeriod(p)}
+              >
+                {p.charAt(0).toUpperCase() + p.slice(1)}
+              </button>
+            ))}
+            <button
+              className="text-xs text-muted-foreground hover:underline ml-2"
+              onClick={() => void loadTokenUsage(tokenPeriod)}
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+        {tokenLoading ? (
+          <div className="text-xs text-muted-foreground">Loading…</div>
+        ) : tokenUsage.length === 0 ? (
+          <div className="text-xs text-muted-foreground italic">
+            No token usage recorded yet.
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b bg-muted/50">
+                  <th className="px-2 py-1.5 text-left font-medium">Period</th>
+                  <th className="px-2 py-1.5 text-right font-medium">
+                    Requests
+                  </th>
+                  <th className="px-2 py-1.5 text-right font-medium">Input</th>
+                  <th className="px-2 py-1.5 text-right font-medium">
+                    Cached Input
+                  </th>
+                  <th className="px-2 py-1.5 text-right font-medium">Output</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tokenUsage.map((r) => (
+                  <tr key={r.period} className="border-b last:border-0">
+                    <td className="px-2 py-1 whitespace-nowrap font-mono">
+                      {r.period}
+                    </td>
+                    <td className="px-2 py-1 text-right">{r.requests}</td>
+                    <td className="px-2 py-1 text-right">
+                      {formatTokens(r.input_tokens)}
+                    </td>
+                    <td className="px-2 py-1 text-right">
+                      {formatTokens(r.cached_input_tokens)}
+                    </td>
+                    <td className="px-2 py-1 text-right">
+                      {formatTokens(r.output_tokens)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Recent call logs */}

@@ -23,7 +23,7 @@ const updateSchema = z.object({
   weekOutputTokensUsed: z.number().optional(),
   monthCacheInputTokensUsed: z.number().optional(),
   monthOutputTokensUsed: z.number().optional(),
-  rollingHourOffset: z.number().int().min(0).max(23).optional(),
+  planStartTime: z.coerce.date().nullable().optional(),
   usageMode: z.enum(["request", "token"]).optional(),
   weight: z.number().int().min(0).optional(),
   enabled: z.boolean().optional(),

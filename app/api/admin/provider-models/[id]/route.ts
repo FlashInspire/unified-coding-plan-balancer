@@ -4,7 +4,7 @@ import { requireAdmin } from "../../_lib/guard";
 import { providerModelRepo } from "@/lib/repositories/providerModelRepo";
 
 const updateSchema = z.object({
-  realModelId: z.string().min(1).optional(),
+  realModelId: z.string().nullable().optional(),
   contextLengthOverride: z.number().int().positive().nullable().optional(),
   maxTokensOverride: z.number().int().positive().nullable().optional(),
   temperatureOverride: z.number().nullable().optional(),

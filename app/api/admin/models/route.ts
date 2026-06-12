@@ -11,8 +11,15 @@ const createSchema = z.object({
   temperature: z.number().optional(),
   topP: z.number().optional(),
   topK: z.number().int().optional(),
+  minP: z.number().optional(),
+  frequencyPenalty: z.number().optional(),
+  presencePenalty: z.number().optional(),
+  repetitionPenalty: z.number().optional(),
   reasoningEffort: z.enum(["low", "medium", "high"]).optional(),
   includeReasoningInRequest: z.boolean().optional(),
+  vision: z.boolean().optional(),
+  enableThinking: z.boolean().nullable().optional(),
+  thinkingBudget: z.number().int().positive().nullable().optional(),
   enabled: z.boolean().optional(),
 });
 

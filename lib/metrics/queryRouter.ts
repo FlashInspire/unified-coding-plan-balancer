@@ -118,3 +118,88 @@ export function usageInMonth(
     return [];
   }
 }
+
+// ---------------------------------------------------------------------------
+// Per-API-key token usage aggregation (day / week / month)
+// ---------------------------------------------------------------------------
+
+export interface TokenUsageSummary {
+  period: string; // e.g. "2026-06-11", "2026-W24", "2026-06"
+  input_tokens: number;
+  cached_input_tokens: number;
+  output_tokens: number;
+  requests: number;
+}
+
+/** Aggregate token usage for a single API key within one month shard. */
+export function apiKeyTokenUsage(
+  apiKeyId: string,
+  period: "day" | "week" | "month",
+  monthShardKey: string = monthKey(),
+): TokenUsageSummary[] {
+  try {
+    const db = shardStore.openStat(monthShardKey);
+    let groupExpr: string;
+    let selectPeriod: string;
+    if (period === "day") {
+      groupExpr = "date(minute, 'unixepoch')";
+      selectPeriod = "date(minute, 'unixepoch') AS period";
+    } else if (period === "week") {
+      groupExpr = "strftime('%Y-W%W', minute, 'unixepoch')";
+      selectPeriod = "strftime('%Y-W%W', minute, 'unixepoch') AS period";
+    } else {
+      groupExpr = "strftime('%Y-%m', minute, 'unixepoch')";
+      selectPeriod = "strftime('%Y-%m', minute, 'unixepoch') AS period";
+    }
+    const rows = db
+      .prepare(
+        `SELECT ${selectPeriod},
+                SUM(input_tokens) AS input_tokens,
+                SUM(cached_input_tokens) AS cached_input_tokens,
+                SUM(output_tokens) AS output_tokens,
+                SUM(requests) AS requests
+           FROM usage_minute
+          WHERE api_key_id = ?
+          GROUP BY ${groupExpr}
+          ORDER BY period DESC`,
+      )
+      .all(apiKeyId) as TokenUsageSummary[];
+    return rows;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Aggregate token usage across multiple month shards, merging rows with
+ * the same period key (e.g. a week that spans two month shards).
+ */
+export function apiKeyTokenUsageMultiMonth(
+  apiKeyId: string,
+  period: "day" | "week" | "month" = "day",
+  months: number = 3,
+): TokenUsageSummary[] {
+  const shards = listShards("stat");
+  const recent = shards.slice(-months);
+  const current = monthKey();
+  if (!recent.includes(current)) recent.push(current);
+
+  const all: TokenUsageSummary[] = [];
+  for (const shard of recent) {
+    all.push(...apiKeyTokenUsage(apiKeyId, period, shard));
+  }
+
+  const merged = new Map<string, TokenUsageSummary>();
+  for (const row of all) {
+    const existing = merged.get(row.period);
+    if (existing) {
+      existing.input_tokens += row.input_tokens;
+      existing.cached_input_tokens += row.cached_input_tokens;
+      existing.output_tokens += row.output_tokens;
+      existing.requests += row.requests;
+    } else {
+      merged.set(row.period, { ...row });
+    }
+  }
+  return [...merged.values()].sort((a, b) => b.period.localeCompare(a.period));
+}

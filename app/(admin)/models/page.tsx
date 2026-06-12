@@ -28,6 +28,22 @@ const MODEL_FIELDS = [
   { name: "temperature", label: "Temperature", type: "number" as const },
   { name: "topP", label: "Top P", type: "number" as const },
   { name: "topK", label: "Top K", type: "number" as const },
+  { name: "minP", label: "Min P", type: "number" as const },
+  {
+    name: "frequencyPenalty",
+    label: "Frequency Penalty",
+    type: "number" as const,
+  },
+  {
+    name: "presencePenalty",
+    label: "Presence Penalty",
+    type: "number" as const,
+  },
+  {
+    name: "repetitionPenalty",
+    label: "Repetition Penalty",
+    type: "number" as const,
+  },
   {
     name: "reasoningEffort",
     label: "Reasoning Effort",
@@ -39,6 +55,17 @@ const MODEL_FIELDS = [
     label: "Include reasoning in request",
     type: "boolean" as const,
   },
+  {
+    name: "vision",
+    label: "Vision",
+    type: "boolean" as const,
+  },
+  {
+    name: "enableThinking",
+    label: "Enable Thinking",
+    type: "boolean" as const,
+  },
+  { name: "thinkingBudget", label: "Thinking Budget", type: "number" as const },
   { name: "enabled", label: "Enabled", type: "boolean" as const },
 ];
 
@@ -98,28 +125,60 @@ export default function ModelsPage() {
               label: "Context Length",
               type: "number",
               required: true,
-              defaultValue: 128000,
+              defaultValue: 131072,
             },
             {
               name: "maxTokens",
               label: "Max Tokens",
               type: "number",
               required: true,
-              defaultValue: 4096,
+              defaultValue: 32768,
             },
             { name: "temperature", label: "Temperature", type: "number" },
             { name: "topP", label: "Top P", type: "number" },
-            { name: "topK", label: "Top K", type: "number" },
+            { name: "topK", label: "Top K", type: "number", defaultValue: 1 },
+            { name: "minP", label: "Min P", type: "number" },
+            {
+              name: "frequencyPenalty",
+              label: "Frequency Penalty",
+              type: "number",
+            },
+            {
+              name: "presencePenalty",
+              label: "Presence Penalty",
+              type: "number",
+            },
+            {
+              name: "repetitionPenalty",
+              label: "Repetition Penalty",
+              type: "number",
+            },
             {
               name: "reasoningEffort",
               label: "Reasoning Effort",
               type: "select",
               options: ["low", "medium", "high"],
+              defaultValue: "medium",
             },
             {
               name: "includeReasoningInRequest",
               label: "Include reasoning in request",
               type: "boolean",
+            },
+            {
+              name: "vision",
+              label: "Vision",
+              type: "boolean",
+            },
+            {
+              name: "enableThinking",
+              label: "Enable Thinking",
+              type: "boolean",
+            },
+            {
+              name: "thinkingBudget",
+              label: "Thinking Budget",
+              type: "number",
             },
             {
               name: "enabled",

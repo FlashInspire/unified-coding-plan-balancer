@@ -17,8 +17,15 @@ export interface ModelRow {
   temperature: number | null;
   topP: number | null;
   topK: number | null;
+  minP: number | null;
+  frequencyPenalty: number | null;
+  presencePenalty: number | null;
+  repetitionPenalty: number | null;
   reasoningEffort: string | null;
   includeReasoningInRequest: boolean;
+  vision: boolean;
+  enableThinking: boolean | null;
+  thinkingBudget: number | null;
   enabled: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -41,7 +48,7 @@ export interface ProviderRow {
   rollingQuotaResetAt: Date | null;
   weekQuotaResetAt: Date | null;
   monthQuotaResetAt: Date | null;
-  rollingHourOffset: number;
+  planStartTime: Date | null;
   usageMode: string;
   rollingCacheInputTokensUsed: number;
   rollingOutputTokensUsed: number;
@@ -59,7 +66,7 @@ export interface ProviderModelRow {
   id: string;
   modelId: string;
   providerId: string;
-  realModelId: string;
+  realModelId: string | null;
   contextLengthOverride: number | null;
   maxTokensOverride: number | null;
   temperatureOverride: number | null;

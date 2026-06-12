@@ -98,10 +98,10 @@ const PROVIDER_FIELDS = [
     type: "number" as const,
   },
   {
-    name: "rollingHourOffset",
-    label: "Rolling Hour Offset (0–23)",
-    type: "number" as const,
-    defaultValue: 0,
+    name: "planStartTime",
+    label: "Plan Start Time (anchor for rolling/monthly resets)",
+    type: "text" as const,
+    defaultValue: "",
   },
   {
     name: "usageMode",
@@ -298,9 +298,7 @@ export default function ProvidersPage() {
               resetAt={
                 p.rollingQuotaResetAt ? new Date(p.rollingQuotaResetAt) : null
               }
-              suffix={
-                p.rollingHourOffset ? ` (offset: ${p.rollingHourOffset}h)` : ""
-              }
+              suffix=""
               tokenExtra={
                 p.usageMode === "token"
                   ? {

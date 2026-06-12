@@ -9,8 +9,15 @@ export interface ModelInput {
   temperature?: number | null;
   topP?: number | null;
   topK?: number | null;
+  minP?: number | null;
+  frequencyPenalty?: number | null;
+  presencePenalty?: number | null;
+  repetitionPenalty?: number | null;
   reasoningEffort?: string | null;
   includeReasoningInRequest?: boolean;
+  vision?: boolean;
+  enableThinking?: boolean | null;
+  thinkingBudget?: number | null;
   enabled?: boolean;
 }
 
@@ -33,8 +40,15 @@ export const modelRepo = {
         temperature: input.temperature ?? null,
         topP: input.topP ?? null,
         topK: input.topK ?? null,
+        minP: input.minP ?? null,
+        frequencyPenalty: input.frequencyPenalty ?? null,
+        presencePenalty: input.presencePenalty ?? null,
+        repetitionPenalty: input.repetitionPenalty ?? null,
         reasoningEffort: input.reasoningEffort ?? null,
         includeReasoningInRequest: input.includeReasoningInRequest ?? false,
+        vision: input.vision ?? false,
+        enableThinking: input.enableThinking ?? null,
+        thinkingBudget: input.thinkingBudget ?? null,
         enabled: input.enabled ?? true,
       },
     });
