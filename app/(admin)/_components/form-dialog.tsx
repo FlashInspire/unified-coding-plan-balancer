@@ -33,7 +33,7 @@ interface TabsDef {
 interface FieldDef {
   name: string;
   label: string;
-  type: "text" | "number" | "boolean" | "select" | "json";
+  type: "text" | "number" | "boolean" | "select" | "json" | "datetime";
   options?: string[] | SelectOption[];
   required?: boolean;
   defaultValue?: string | number | boolean;
@@ -109,7 +109,10 @@ export function FormDialog({
       if (raw == null || raw === "") continue;
       if (f.type === "number") values[f.name] = Number(raw);
       else if (f.type === "boolean") values[f.name] = raw === "on";
-      else if (f.type === "json") {
+      else if (f.type === "datetime") {
+        // Convert datetime-local (local time, no tz) to ISO string
+        values[f.name] = new Date(String(raw)).toISOString();
+      } else if (f.type === "json") {
         try {
           values[f.name] = JSON.parse(String(raw));
         } catch {
@@ -225,6 +228,23 @@ function renderField(f: FieldDef, iv?: Record<string, unknown>) {
       />
     );
   }
+  if (f.type === "datetime") {
+    const toLocal = (v: unknown): string => {
+      if (!v) return "";
+      const d = new Date(String(v));
+      if (isNaN(d.getTime())) return "";
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    return (
+      <Input
+        type="datetime-local"
+        name={f.name}
+        required={f.required}
+        defaultValue={toLocal(iv?.[f.name] ?? f.defaultValue)}
+      />
+    );
+  }
   return (
     <Input
       type={f.type === "number" ? "number" : "text"}
@@ -266,15 +286,14 @@ function renderFormEntries(entries: FormEntry[], iv?: Record<string, unknown>) {
   let i = 0;
   while (i < entries.length) {
     const entry = entries[i];
-    // Section: collect fields until next section/tabs/end
+    // Section: collect fields and tabs until next section/end
     if ("type" in entry && entry.type === "section") {
-      const sectionFields: FieldDef[] = [];
+      const sectionChildren: (FieldDef | TabsDef)[] = [];
       i++;
       while (i < entries.length) {
         const next = entries[i];
-        if ("type" in next && (next.type === "section" || next.type === "tabs"))
-          break;
-        sectionFields.push(next as FieldDef);
+        if ("type" in next && next.type === "section") break;
+        sectionChildren.push(next as FieldDef | TabsDef);
         i++;
       }
       nodes.push(
@@ -285,9 +304,39 @@ function renderFormEntries(entries: FormEntry[], iv?: Record<string, unknown>) {
           <legend className="text-xs font-semibold px-1 text-muted-foreground uppercase tracking-wide">
             {entry.legend}
           </legend>
-          {sectionFields.map((sf) => (
-            <FieldBlock key={sf.name} f={sf} iv={iv} />
-          ))}
+          {sectionChildren.map((child) => {
+            if ("type" in child && child.type === "tabs") {
+              const tabsDef = child;
+              return (
+                <Tabs
+                  key={`tabs-${nodes.length}-${tabsDef.tabs[0]?.label ?? ""}`}
+                  defaultValue={tabsDef.tabs[0]?.label ?? ""}
+                  className="w-full"
+                >
+                  <TabsList variant="line">
+                    {tabsDef.tabs.map((t) => (
+                      <TabsTrigger key={t.label} value={t.label}>
+                        {t.label}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                  {tabsDef.tabs.map((t) => (
+                    <TabsContent
+                      key={t.label}
+                      value={t.label}
+                      className="space-y-2 pt-1"
+                    >
+                      {t.fields.map((tf) => (
+                        <FieldBlock key={tf.name} f={tf} iv={iv} />
+                      ))}
+                    </TabsContent>
+                  ))}
+                </Tabs>
+              );
+            }
+            const sf = child as FieldDef;
+            return <FieldBlock key={sf.name} f={sf} iv={iv} />;
+          })}
         </fieldset>,
       );
       continue;

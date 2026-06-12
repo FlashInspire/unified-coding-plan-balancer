@@ -12,6 +12,7 @@ interface UserRow {
   id: string;
   username: string;
   mustChangePassword: boolean;
+  lastSignInAt: string | null;
   createdAt: string;
 }
 
@@ -146,12 +147,14 @@ export default function UsersPage() {
       ) : (
         <DataTable
           idKey="id"
+          tableClassName="table-fixed"
           data={data as unknown as Record<string, unknown>[]}
           columns={[
-            { key: "username", label: "Username" },
+            { key: "username", label: "Username", className: "w-[160px]" },
             {
               key: "mustChangePassword",
               label: "Must Change Password",
+              className: "w-[150px]",
               render: (r) => {
                 const row = r as unknown as UserRow;
                 return row.mustChangePassword ? (
@@ -169,8 +172,24 @@ export default function UsersPage() {
               },
             },
             {
+              key: "lastSignInAt",
+              label: "Last Login",
+              className: "w-[150px]",
+              render: (r) => {
+                const row = r as unknown as UserRow;
+                return (
+                  <span className="text-xs text-muted-foreground">
+                    {row.lastSignInAt
+                      ? new Date(row.lastSignInAt).toLocaleString()
+                      : "—"}
+                  </span>
+                );
+              },
+            },
+            {
               key: "createdAt",
               label: "Created",
+              className: "w-[120px]",
               render: (r) =>
                 new Date(r.createdAt as string).toLocaleDateString(),
             },

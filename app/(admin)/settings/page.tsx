@@ -7,6 +7,18 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { signOut } from "next-auth/react";
+import { LogOut, Lock } from "lucide-react";
 
 interface SettingEntry {
   value: string;
@@ -45,15 +57,34 @@ export default function SettingsPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Tab 1: User Profile — change password
+// Tab 1: User Profile — profile info, change password, sign out
 // ---------------------------------------------------------------------------
 function UserProfileCard() {
+  const [profile, setProfile] = useState<{
+    username: string;
+    lastSignInAt: string | null;
+  } | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [pwOpen, setPwOpen] = useState(false);
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    queueMicrotask(async () => {
+      try {
+        const r = await apiFetch<{
+          data: { username: string; lastSignInAt: string | null };
+        }>("/api/admin/me");
+        setProfile(r.data);
+      } finally {
+        setProfileLoading(false);
+      }
+    });
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -79,6 +110,7 @@ function UserProfileCard() {
       setOldPassword("");
       setNewPassword("");
       setConfirm("");
+      setTimeout(() => setPwOpen(false), 1000);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to change password",
@@ -91,57 +123,111 @@ function UserProfileCard() {
   return (
     <Card className="max-w-md mt-3">
       <CardHeader>
-        <CardTitle className="text-sm">Change Password</CardTitle>
+        <CardTitle className="text-sm">User Profile</CardTitle>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium mb-1 text-muted-foreground">
-              Current Password
-            </label>
-            <Input
-              type="password"
-              value={oldPassword}
-              onChange={(e) => setOldPassword(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1 text-muted-foreground">
-              New Password
-            </label>
-            <Input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1 text-muted-foreground">
-              Confirm New Password
-            </label>
-            <Input
-              type="password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              required
-            />
-          </div>
-          {error && (
-            <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
-              {error}
+      <CardContent className="space-y-4">
+        {profileLoading ? (
+          <Skeleton className="h-20 w-full" />
+        ) : profile ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Username</span>
+              <span className="text-xs font-medium">{profile.username}</span>
             </div>
-          )}
-          {success && (
-            <div className="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700">
-              Password changed successfully.
+            <Separator />
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Last Login</span>
+              <span className="text-xs">
+                {profile.lastSignInAt
+                  ? new Date(profile.lastSignInAt).toLocaleString()
+                  : "—"}
+              </span>
             </div>
-          )}
-          <Button type="submit" disabled={loading}>
-            {loading ? "Saving…" : "Change Password"}
-          </Button>
-        </form>
+            <Separator />
+          </div>
+        ) : null}
+
+        <Dialog open={pwOpen} onOpenChange={setPwOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline" className="w-full">
+              <Lock className="h-3.5 w-3.5 mr-2" />
+              Change Password
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Change Password</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium mb-1 text-muted-foreground">
+                  Current Password
+                </label>
+                <Input
+                  type="password"
+                  value={oldPassword}
+                  onChange={(e) => setOldPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1 text-muted-foreground">
+                  New Password
+                </label>
+                <Input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1 text-muted-foreground">
+                  Confirm New Password
+                </label>
+                <Input
+                  type="password"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  required
+                />
+              </div>
+              {error && (
+                <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+                  {error}
+                </div>
+              )}
+              {success && (
+                <div className="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700">
+                  Password changed successfully.
+                </div>
+              )}
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setPwOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={loading}>
+                  {loading ? "Saving…" : "Save"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <Separator />
+
+        <Button
+          variant="outline"
+          className="w-full"
+          onClick={() => signOut({ callbackUrl: "/login" })}
+        >
+          <LogOut className="h-3.5 w-3.5 mr-2" />
+          Sign Out
+        </Button>
       </CardContent>
     </Card>
   );

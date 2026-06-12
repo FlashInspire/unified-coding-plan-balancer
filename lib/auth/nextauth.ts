@@ -8,6 +8,7 @@ import Credentials from "next-auth/providers/credentials";
 import { z } from "zod";
 import { verifyPassword } from "@/lib/auth/password";
 import { prisma } from "@/lib/prisma";
+import { adminUserRepo } from "@/lib/repositories/adminUserRepo";
 import { authConfig } from "@/lib/auth/auth.config";
 
 const credsSchema = z.object({
@@ -32,6 +33,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!user) return null;
         const ok = await verifyPassword(password, user.passwordHash);
         if (!ok) return null;
+        // Update last sign-in timestamp
+        await adminUserRepo.updateLastSignIn(user.id);
         return {
           id: user.id,
           name: user.username,

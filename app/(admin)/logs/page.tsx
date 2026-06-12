@@ -211,7 +211,7 @@ export default function LogsUsagePage() {
                   {
                     key: "api_key_name",
                     label: "Key",
-                    className: "w-[110px]",
+                    className: "w-[180px]",
                     render: (r) => (
                       <span className="font-mono text-xs truncate block">
                         {String(r.api_key_name ?? r.api_key_id ?? "—")}
@@ -221,19 +221,19 @@ export default function LogsUsagePage() {
                   {
                     key: "model_id",
                     label: "Model",
-                    className: "w-[105px]",
+                    className: "w-[130px]",
                   },
                   {
                     key: "provider_name",
                     label: "Provider",
-                    className: "w-[95px]",
+                    className: "w-[110px]",
                     render: (r) =>
                       String(r.provider_name ?? r.provider_id ?? "—"),
                   },
                   {
                     key: "status",
                     label: "Status",
-                    className: "w-[65px]",
+                    className: "w-[70px]",
                     render: (r) => {
                       const s = Number(r.status);
                       if (s === 0)
@@ -261,12 +261,21 @@ export default function LogsUsagePage() {
                   {
                     key: "latency_ms",
                     label: "Latency",
-                    className: "w-[65px]",
-                    render: (r) => (
-                      <span className="text-xs tabular-nums">
-                        {Number(r.status) === 0 ? "—" : `${r.latency_ms}ms`}
-                      </span>
-                    ),
+                    className: "w-[75px]",
+                    render: (r) => {
+                      const fmtDuration = (ms: number) => {
+                        if (ms >= 60_000) return `${(ms / 60_000).toFixed(1)}m`;
+                        if (ms >= 10_000) return `${(ms / 1_000).toFixed(2)}s`;
+                        return `${ms}ms`;
+                      };
+                      return (
+                        <span className="text-xs tabular-nums">
+                          {Number(r.status) === 0
+                            ? "—"
+                            : fmtDuration(Number(r.latency_ms))}
+                        </span>
+                      );
+                    },
                   },
                   {
                     key: "input_tokens",
@@ -322,12 +331,21 @@ export default function LogsUsagePage() {
                   {
                     key: "ttft_ms",
                     label: "TTFT",
-                    className: "w-[60px]",
-                    render: (r) => (
-                      <span className="text-xs tabular-nums">
-                        {r.ttft_ms == null ? "—" : `${r.ttft_ms}ms`}
-                      </span>
-                    ),
+                    className: "w-[70px]",
+                    render: (r) => {
+                      const fmtDuration = (ms: number) => {
+                        if (ms >= 60_000) return `${(ms / 60_000).toFixed(1)}m`;
+                        if (ms >= 10_000) return `${(ms / 1_000).toFixed(2)}s`;
+                        return `${ms}ms`;
+                      };
+                      return (
+                        <span className="text-xs tabular-nums">
+                          {r.ttft_ms == null
+                            ? "—"
+                            : fmtDuration(Number(r.ttft_ms))}
+                        </span>
+                      );
+                    },
                   },
                   {
                     key: "user_agent",
@@ -439,37 +457,56 @@ export default function LogsUsagePage() {
               </div>
               <DataTable
                 idKey="minute"
+                tableClassName="table-fixed"
                 data={usageDisplay as unknown as Record<string, unknown>[]}
                 columns={[
                   {
                     key: "minute",
                     label: "Minute",
+                    className: "w-[155px]",
                     render: (r) => (
                       <span className="text-xs whitespace-nowrap">
                         {new Date(Number(r.minute) * 60_000).toLocaleString()}
                       </span>
                     ),
                   },
-                  { key: "model_id", label: "Model" },
-                  { key: "provider_id", label: "Provider" },
-                  { key: "requests", label: "Reqs" },
-                  { key: "requests_ok", label: "OK" },
-                  { key: "requests_err", label: "Err" },
+                  { key: "model_id", label: "Model", className: "w-[130px]" },
+                  {
+                    key: "provider_id",
+                    label: "Provider",
+                    className: "w-[110px]",
+                  },
+                  {
+                    key: "requests",
+                    label: "Reqs",
+                    className: "w-[50px] text-right",
+                  },
+                  {
+                    key: "requests_ok",
+                    label: "OK",
+                    className: "w-[45px] text-right",
+                  },
+                  {
+                    key: "requests_err",
+                    label: "Err",
+                    className: "w-[45px] text-right",
+                  },
                   {
                     key: "input_tokens",
                     label: "In Tok",
-                    className: "text-right",
+                    className: "w-[60px] text-right",
                   },
                   {
                     key: "output_tokens",
                     label: "Out Tok",
-                    className: "text-right",
+                    className: "w-[60px] text-right",
                   },
                   {
                     key: "avg_ttft_ms",
                     label: "Avg TTFT",
+                    className: "w-[70px]",
                     render: (r) => (
-                      <span className="tabular-nums">
+                      <span className="text-xs tabular-nums">
                         {r.avg_ttft_ms == null
                           ? "—"
                           : `${Number(r.avg_ttft_ms).toFixed(0)}ms`}
@@ -479,8 +516,9 @@ export default function LogsUsagePage() {
                   {
                     key: "avg_tps_out",
                     label: "Avg TPS",
+                    className: "w-[65px]",
                     render: (r) => (
-                      <span className="tabular-nums">
+                      <span className="text-xs tabular-nums">
                         {r.avg_tps_out == null
                           ? "—"
                           : `${Number(r.avg_tps_out).toFixed(1)}`}

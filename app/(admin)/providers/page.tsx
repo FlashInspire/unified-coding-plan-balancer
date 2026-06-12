@@ -26,7 +26,7 @@ function basicFields(includeId: boolean) {
   const fields: Array<{
     name: string;
     label: string;
-    type: "text";
+    type: "text" | "datetime";
     required?: boolean;
     defaultValue?: string;
     placeholder?: string;
@@ -44,9 +44,8 @@ function basicFields(includeId: boolean) {
     {
       name: "planStartTime",
       label: "Subscription Start Time",
-      type: "text",
+      type: "datetime",
       defaultValue: "",
-      placeholder: "e.g. 2026-01-01T00:00:00Z",
     },
   );
   return fields;
@@ -258,7 +257,7 @@ export default function ProvidersPage() {
     {
       key: "quota",
       label: "Quota",
-      className: "w-[80px]",
+      className: "w-[100px]",
       render: (row: Record<string, unknown>) => {
         const p = row as unknown as ProviderRow;
         const rp = quotaPct(p.rollingQuotaUsed, p.rollingQuota);
@@ -272,8 +271,15 @@ export default function ProvidersPage() {
         return (
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="cursor-default">
-                <CircularProgress value={anyQuota ? maxPct : null} size={36} />
+              <div className="flex items-center gap-1.5 cursor-default">
+                <CircularProgress
+                  value={anyQuota ? maxPct : null}
+                  size={18}
+                  showValue={false}
+                />
+                <span className="text-xs tabular-nums">
+                  {anyQuota ? `${Math.round(maxPct)}%` : "∞"}
+                </span>
               </div>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs space-y-1">
@@ -303,23 +309,24 @@ export default function ProvidersPage() {
     {
       key: "endpoints",
       label: "Endpoints",
-      className: "w-[220px]",
+      className: "w-[120px]",
       render: (row: Record<string, unknown>) => {
         const p = row as unknown as ProviderRow;
         return (
           <div className="flex items-center gap-1.5 flex-wrap">
-            <Badge
-              variant={p.baseUrlOpenai ? "default" : "outline"}
-              className="text-[10px]"
-            >
-              OpenAI {p.baseUrlOpenai ? "Configured" : "Not Configured"}
-            </Badge>
-            <Badge
-              variant={p.baseUrlAnthropic ? "default" : "outline"}
-              className="text-[10px]"
-            >
-              Anthropic {p.baseUrlAnthropic ? "Configured" : "Not Configured"}
-            </Badge>
+            {p.baseUrlOpenai && (
+              <Badge variant="default" className="text-[10px]">
+                OpenAI
+              </Badge>
+            )}
+            {p.baseUrlAnthropic && (
+              <Badge variant="default" className="text-[10px]">
+                Anthropic
+              </Badge>
+            )}
+            {!p.baseUrlOpenai && !p.baseUrlAnthropic && (
+              <span className="text-xs text-muted-foreground">—</span>
+            )}
           </div>
         );
       },
@@ -393,6 +400,7 @@ export default function ProvidersPage() {
             columns={columns}
             data={data as unknown as Record<string, unknown>[]}
             idKey="id"
+            tableClassName="table-fixed"
             actions={(row) => {
               const p = row as unknown as ProviderRow;
               return (

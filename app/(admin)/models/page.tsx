@@ -307,7 +307,7 @@ export default function ModelsPage() {
     {
       key: "providerName",
       label: "Provider",
-      className: "w-[160px]",
+      className: "w-[200px]",
       render: (row: ProviderTableRow) => (
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-medium">{row.providerName}</span>
@@ -349,22 +349,6 @@ export default function ModelsPage() {
           {row.apiStyle}
         </Badge>
       ),
-    },
-    {
-      key: "enabled",
-      label: "Enabled",
-      className: "w-[65px]",
-      render: (row: ProviderTableRow) =>
-        row.configured ? (
-          <Badge
-            variant={row.enabled ? "default" : "secondary"}
-            className="text-[10px]"
-          >
-            {row.enabled ? "Yes" : "No"}
-          </Badge>
-        ) : (
-          <span className="text-xs text-muted-foreground">—</span>
-        ),
     },
   ];
 
@@ -478,9 +462,16 @@ export default function ModelsPage() {
               <div className="rounded-lg border bg-card overflow-hidden">
                 <DataTable<ProviderTableRow>
                   columns={providerColumns}
-                  data={providerTableData}
+                  data={[...providerTableData].sort((a, b) => {
+                    const order = (r: ProviderTableRow) =>
+                      r.configured && r.enabled ? 0 : r.configured ? 1 : 2;
+                    return order(a) - order(b);
+                  })}
                   idKey={"providerId" as keyof ProviderTableRow}
                   tableClassName="table-fixed"
+                  rowClassName={(row) =>
+                    !row.configured || !row.enabled ? "opacity-50" : undefined
+                  }
                   actions={(row) =>
                     row.configured ? (
                       <>

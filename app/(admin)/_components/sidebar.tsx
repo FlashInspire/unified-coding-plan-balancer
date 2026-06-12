@@ -11,11 +11,9 @@ import {
   Users,
   Settings,
   LayoutDashboard,
-  LogOut,
   Menu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { signOut } from "next-auth/react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -29,7 +27,6 @@ const NAV_ITEMS = [
   { href: "/quota", label: "Quota", icon: BarChart3 },
   { href: "/logs", label: "Logs & Usage", icon: ScrollText },
   { href: "/users", label: "Users", icon: Users },
-  { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
 function NavContent({ onNavigate }: { onNavigate?: () => void }) {
@@ -72,13 +69,19 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
         </nav>
       </ScrollArea>
       <div className="border-t border-sidebar-border p-3">
-        <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
+        <Link
+          href="/settings"
+          onClick={onNavigate}
+          className={cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+            pathname === "/settings" || pathname.startsWith("/settings")
+              ? "bg-sidebar-accent text-sidebar-accent-foreground"
+              : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+          )}
         >
-          <LogOut className="h-4 w-4" />
-          Sign out
-        </button>
+          <Settings className="h-4 w-4 shrink-0" />
+          Settings
+        </Link>
       </div>
     </div>
   );

@@ -12,6 +12,7 @@ export const adminUserRepo = {
       id: string;
       username: string;
       mustChangePassword: boolean;
+      lastSignInAt: Date | null;
       createdAt: Date;
     }[]
   > {
@@ -20,6 +21,7 @@ export const adminUserRepo = {
         id: true,
         username: true,
         mustChangePassword: true,
+        lastSignInAt: true,
         createdAt: true,
       },
       orderBy: { username: "asc" },
@@ -53,6 +55,13 @@ export const adminUserRepo = {
     return prisma.adminUser.update({
       where: { id },
       data: { mustChangePassword: value },
+    });
+  },
+
+  async updateLastSignIn(id: string): Promise<void> {
+    await prisma.adminUser.update({
+      where: { id },
+      data: { lastSignInAt: new Date() },
     });
   },
 

@@ -39,12 +39,26 @@ export default function QuotaPage() {
       ) : (
         <DataTable
           idKey="providerId"
+          tableClassName="table-fixed"
           data={data as unknown as Record<string, unknown>[]}
           columns={[
-            { key: "providerId", label: "Provider" },
+            {
+              key: "providerId",
+              label: "Provider",
+              className: "w-[120px]",
+              render: (r) => {
+                const prov = providerMap.get(r.providerId as string);
+                return (
+                  <span className="text-xs">
+                    {prov?.name ?? String(r.providerId ?? "—")}
+                  </span>
+                );
+              },
+            },
             {
               key: "usagePercent",
               label: "Usage %",
+              className: "w-[80px]",
               render: (r) =>
                 r.usagePercent == null
                   ? "—"
@@ -53,6 +67,7 @@ export default function QuotaPage() {
             {
               key: "quotaRunningOut",
               label: "Status",
+              className: "w-[100px]",
               render: (r) => {
                 const prov = providerMap.get(r.providerId as string);
                 if (prov?.quotaRunningOut) {

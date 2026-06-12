@@ -255,13 +255,19 @@ export default function ApiKeysPage() {
             {
               key: "quota",
               label: "Quota",
-              className: "w-[60px]",
+              className: "w-[80px]",
               render: (r) => {
                 const k = r as unknown as ApiKeyRow;
                 const pct = maxQuotaPercent(k);
                 return (
-                  <span title={quotaTooltip(k)}>
-                    <CircularProgress value={pct} size={28} />
+                  <span
+                    title={quotaTooltip(k)}
+                    className="flex items-center gap-1.5"
+                  >
+                    <CircularProgress value={pct} size={18} showValue={false} />
+                    <span className="text-xs tabular-nums">
+                      {pct != null ? `${Math.round(pct)}%` : "∞"}
+                    </span>
                   </span>
                 );
               },

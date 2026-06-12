@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { ChevronRight, ChevronDown, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface Column<T> {
   key: string;
@@ -28,6 +29,7 @@ interface DataTableProps<T> {
   expandable?: boolean;
   detailRender?: (row: T) => React.ReactNode;
   tableClassName?: string;
+  rowClassName?: (row: T) => string | undefined;
 }
 
 export function DataTable<T extends Record<string, unknown>>({
@@ -39,6 +41,7 @@ export function DataTable<T extends Record<string, unknown>>({
   expandable,
   detailRender,
   tableClassName,
+  rowClassName,
 }: DataTableProps<T>) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -90,7 +93,10 @@ export function DataTable<T extends Record<string, unknown>>({
           return (
             <React.Fragment key={id}>
               <TableRow
-                className={expandable ? "cursor-pointer" : ""}
+                className={cn(
+                  expandable ? "cursor-pointer" : "",
+                  rowClassName?.(row),
+                )}
                 onClick={expandable ? () => toggleExpand(id) : undefined}
               >
                 {expandable && (
