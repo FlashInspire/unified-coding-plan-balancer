@@ -1,6 +1,6 @@
 /**
  * Aggregates the previous minute's request_log rows into per-(minute, key, provider, model)
- * usage_minute rows. Runs once a minute, offset by ~5s to allow the flusher to drain.
+ * usage_minute rows. Called by the cron endpoint every 60 seconds.
  */
 import {
   dateKey,
@@ -9,7 +9,16 @@ import {
   shardStore,
 } from "@/lib/metrics/shardStore";
 
-let timer: NodeJS.Timeout | null = null;
+/** Epoch minute of the last successful aggregation. */
+let lastAggregatedMinute = 0;
+
+export function getLastAggregatedMinute(): number {
+  return lastAggregatedMinute;
+}
+
+export function setLastAggregatedMinute(minute: number): void {
+  lastAggregatedMinute = minute;
+}
 
 interface MinuteRow {
   api_key_id: string;
@@ -98,32 +107,6 @@ export function aggregateMinute(minuteEpoch: number): number {
   });
   tx(rows);
   return rows.length;
-}
-
-function tickAggregator(): void {
-  // Aggregate the minute that ended ~5s ago.
-  const now = Date.now();
-  const previousMinute = Math.floor((now - 5_000) / 60_000) - 1;
-  try {
-    aggregateMinute(previousMinute);
-  } catch (err) {
-    console.warn(
-      "[metrics-aggregator]",
-      err instanceof Error ? err.message : err,
-    );
-  }
-}
-
-export function startAggregator(): void {
-  if (timer) return;
-  timer = setInterval(tickAggregator, 60_000);
-}
-
-export function stopAggregator(): void {
-  if (timer) {
-    clearInterval(timer);
-    timer = null;
-  }
 }
 
 export { listShards };

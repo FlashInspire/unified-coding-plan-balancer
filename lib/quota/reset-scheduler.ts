@@ -10,9 +10,15 @@
  * planStartTime (falls back to createdAt when null).
  * Monthly resets fire on the same day-of-month as planStartTime.
  * Weekly resets fire at Monday 00:00 UTC (unchanged).
+ *
+ * ApiKey resets use natural calendar:
+ * - Rolling: every 5 hours anchored to createdAt
+ * - Week: next natural Monday 00:00 UTC
+ * - Month: next natural 1st of month 00:00 UTC
  */
 import { prisma } from "@/lib/prisma";
 import { resetQuotaRetries } from "@/lib/routing/selectCandidate";
+import { keyTokenBuffer } from "@/lib/quota/keyTokenBuffer";
 
 // ---------------------------------------------------------------------------
 // Exported helpers (pure, testable)
@@ -42,6 +48,27 @@ export function computeNextResetAt(
       return computeNextWeekReset(now);
     case "month":
       return computeNextMonthReset(now, planStartTime);
+  }
+}
+
+/**
+ * Compute the next natural calendar reset for ApiKey.
+ * - Rolling: every 5 hours anchored to createdAt
+ * - Week: next Monday 00:00 UTC
+ * - Month: next 1st of month 00:00 UTC
+ */
+export function computeNextKeyResetAt(
+  dimension: ResetDimension,
+  now: Date,
+  createdAt: Date,
+): Date {
+  switch (dimension) {
+    case "rolling":
+      return computeNextRollingReset(now, createdAt);
+    case "week":
+      return computeNextNaturalWeekReset(now);
+    case "month":
+      return computeNextNaturalMonthReset(now);
   }
 }
 
@@ -110,15 +137,51 @@ function computeNextMonthReset(now: Date, planStartTime: Date): Date {
   return new Date(Date.UTC(nextYear, nextMonthIdx, nextMonthDay, h, m, s, 0));
 }
 
+/** Next natural Monday 00:00 UTC. */
+export function computeNextNaturalWeekReset(now: Date): Date {
+  const d = new Date(now);
+  d.setUTCHours(0, 0, 0, 0);
+  const dayOfWeek = d.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+
+  if (dayOfWeek === 1 && now.getTime() <= d.getTime()) {
+    return d; // exactly midnight Monday
+  }
+  const daysUntilMonday = dayOfWeek === 0 ? 1 : (8 - dayOfWeek) % 7 || 7;
+  d.setUTCDate(d.getUTCDate() + (dayOfWeek === 1 ? 7 : daysUntilMonday));
+  return d;
+}
+
+/** Next natural 1st of month 00:00 UTC. */
+export function computeNextNaturalMonthReset(now: Date): Date {
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  // Try this month's 1st
+  const candidate = new Date(Date.UTC(y, m, 1, 0, 0, 0, 0));
+  if (candidate.getTime() > now.getTime()) return candidate;
+  // Next month's 1st
+  return new Date(Date.UTC(y, m + 1, 1, 0, 0, 0, 0));
+}
+
 // ---------------------------------------------------------------------------
-// Scheduler
+// Scheduler — exported for cron endpoint
 // ---------------------------------------------------------------------------
 
-let timer: NodeJS.Timeout | null = null;
+export interface ResetTickResult {
+  providersReset: number;
+  keysReset: number;
+}
 
-async function tick(): Promise<void> {
+/**
+ * Run one tick of the reset scheduler.
+ * Called by GET /api/cron. Returns counts of entities that were reset.
+ */
+export async function resetTick(): Promise<ResetTickResult> {
   const now = new Date();
   const nowTime = now.getTime();
+  let providersReset = 0;
+  let keysReset = 0;
+
+  // ── Provider resets ──────────────────────────────────────────────
 
   const providers = await prisma.provider.findMany({
     where: { enabled: true },
@@ -177,7 +240,6 @@ async function tick(): Promise<void> {
       }
 
       // Weekly — reset if past due, or backfill if resetAt is missing
-      // quota = 0 or null means unlimited → skip scheduling
       if (p.weekQuota != null && p.weekQuota > 0) {
         if (p.weekQuotaResetAt && p.weekQuotaResetAt.getTime() <= nowTime) {
           updates.weekQuotaUsed = 0;
@@ -191,7 +253,6 @@ async function tick(): Promise<void> {
       }
 
       // Monthly — reset if past due, or backfill if resetAt is missing
-      // quota = 0 or null means unlimited → skip scheduling
       if (p.monthQuota != null && p.monthQuota > 0) {
         if (p.monthQuotaResetAt && p.monthQuotaResetAt.getTime() <= nowTime) {
           updates.monthQuotaUsed = 0;
@@ -208,6 +269,7 @@ async function tick(): Promise<void> {
       if (anyReset) {
         updates.quotaRunningOut = false;
         resetQuotaRetries(p.id);
+        providersReset++;
       }
 
       if (Object.keys(updates).length === 0) return Promise.resolve();
@@ -217,12 +279,109 @@ async function tick(): Promise<void> {
       });
     }),
   );
-}
 
-export function startResetScheduler(): void {
-  if (timer) return;
-  // Tick every 60 seconds
-  timer = setInterval(() => void tick(), 60_000);
-  // Also run immediately on startup
-  void tick();
+  // ── ApiKey resets ────────────────────────────────────────────────
+
+  const keys = await prisma.apiKey.findMany({
+    where: { enabled: true },
+    select: {
+      id: true,
+      createdAt: true,
+      rollingQuota: true,
+      weekQuota: true,
+      monthQuota: true,
+      tokensUsed: true,
+      rollingQuotaResetAt: true,
+      weekQuotaResetAt: true,
+      monthQuotaResetAt: true,
+    },
+  });
+
+  await Promise.all(
+    keys.map((k) => {
+      const updates: Record<string, unknown> = {};
+      let anyReset = false;
+
+      if (k.rollingQuota != null && k.rollingQuota > 0) {
+        if (
+          k.rollingQuotaResetAt &&
+          k.rollingQuotaResetAt.getTime() <= nowTime
+        ) {
+          updates.tokensUsed = 0;
+          updates.rollingQuotaResetAt = computeNextKeyResetAt(
+            "rolling",
+            now,
+            k.createdAt,
+          );
+          anyReset = true;
+        } else if (!k.rollingQuotaResetAt) {
+          updates.rollingQuotaResetAt = computeNextKeyResetAt(
+            "rolling",
+            now,
+            k.createdAt,
+          );
+        }
+      }
+
+      if (k.weekQuota != null && k.weekQuota > 0) {
+        if (k.weekQuotaResetAt && k.weekQuotaResetAt.getTime() <= nowTime) {
+          updates.tokensUsed = 0;
+          updates.weekQuotaResetAt = computeNextKeyResetAt(
+            "week",
+            now,
+            k.createdAt,
+          );
+          anyReset = true;
+        } else if (!k.weekQuotaResetAt) {
+          updates.weekQuotaResetAt = computeNextKeyResetAt(
+            "week",
+            now,
+            k.createdAt,
+          );
+        }
+      }
+
+      if (k.monthQuota != null && k.monthQuota > 0) {
+        if (k.monthQuotaResetAt && k.monthQuotaResetAt.getTime() <= nowTime) {
+          updates.tokensUsed = 0;
+          updates.monthQuotaResetAt = computeNextKeyResetAt(
+            "month",
+            now,
+            k.createdAt,
+          );
+          anyReset = true;
+        } else if (!k.monthQuotaResetAt) {
+          updates.monthQuotaResetAt = computeNextKeyResetAt(
+            "month",
+            now,
+            k.createdAt,
+          );
+        }
+      }
+
+      if (anyReset) {
+        keysReset++;
+        // Clear quota cache so in-flight checks pick up the reset.
+        keyTokenBuffer.clearQuotaCache(k.id);
+      }
+
+      if (Object.keys(updates).length === 0) return Promise.resolve();
+      return prisma.apiKey.update({
+        where: { id: k.id },
+        data: updates,
+      });
+    }),
+  );
+
+  // Refresh all key quota caches after potential resets.
+  for (const k of keys) {
+    keyTokenBuffer.setQuotaCache(k.id, {
+      rollingQuota: k.rollingQuota,
+      weekQuota: k.weekQuota,
+      monthQuota: k.monthQuota,
+      tokensUsed: k.tokensUsed,
+    });
+  }
+
+  return { providersReset, keysReset };
 }

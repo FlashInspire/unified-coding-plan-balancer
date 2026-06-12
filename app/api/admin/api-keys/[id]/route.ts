@@ -3,7 +3,13 @@ import type { NextRequest } from "next/server";
 import { requireAdmin } from "../../_lib/guard";
 import { apiKeyRepo } from "@/lib/repositories/apiKeyRepo";
 
-const patchSchema = z.object({ enabled: z.boolean() });
+const patchSchema = z.object({
+  name: z.string().min(1).optional(),
+  enabled: z.boolean().optional(),
+  rollingQuota: z.number().int().nonnegative().nullable().optional(),
+  weekQuota: z.number().int().nonnegative().nullable().optional(),
+  monthQuota: z.number().int().nonnegative().nullable().optional(),
+});
 
 export async function PATCH(
   req: NextRequest,
@@ -14,7 +20,7 @@ export async function PATCH(
   const { id } = await params;
   try {
     const data = patchSchema.parse(await req.json());
-    const row = await apiKeyRepo.setEnabled(id, data.enabled);
+    const row = await apiKeyRepo.update(id, data);
     return Response.json({ data: row });
   } catch (e) {
     return Response.json(

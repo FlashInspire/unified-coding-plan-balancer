@@ -36,7 +36,7 @@ export default function UsersPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Users</h1>
+        <h1 className="text-xl font-semibold">Users</h1>
         <FormDialog
           title="Add User"
           triggerLabel="+ Add User"

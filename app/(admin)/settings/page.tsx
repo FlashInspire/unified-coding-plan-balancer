@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { apiFetch } from "../_components/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function SettingsPage() {
   const [oldPassword, setOldPassword] = useState("");
@@ -47,61 +50,67 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-md space-y-6">
-      <h1 className="text-2xl font-bold">Settings</h1>
+      <h1 className="text-xl font-semibold">Settings</h1>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            Current Password
-          </label>
-          <input
-            type="password"
-            value={oldPassword}
-            onChange={(e) => setOldPassword(e.target.value)}
-            required
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-          />
-        </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Change Password</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium mb-1 text-muted-foreground">
+                Current Password
+              </label>
+              <Input
+                type="password"
+                value={oldPassword}
+                onChange={(e) => setOldPassword(e.target.value)}
+                required
+              />
+            </div>
 
-        <div>
-          <label className="block text-sm font-medium mb-1">New Password</label>
-          <input
-            type="password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            required
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-          />
-        </div>
+            <div>
+              <label className="block text-xs font-medium mb-1 text-muted-foreground">
+                New Password
+              </label>
+              <Input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+              />
+            </div>
 
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            Confirm New Password
-          </label>
-          <input
-            type="password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            required
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-          />
-        </div>
+            <div>
+              <label className="block text-xs font-medium mb-1 text-muted-foreground">
+                Confirm New Password
+              </label>
+              <Input
+                type="password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                required
+              />
+            </div>
 
-        {error && <div className="text-sm text-red-600">{error}</div>}
-        {success && (
-          <div className="text-sm text-green-600">
-            Password changed successfully
-          </div>
-        )}
+            {error && (
+              <div className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+                {error}
+              </div>
+            )}
+            {success && (
+              <div className="text-sm text-green-600 rounded-md bg-green-50 px-3 py-2 dark:bg-green-950">
+                Password changed successfully
+              </div>
+            )}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-        >
-          {loading ? "Saving…" : "Change Password"}
-        </button>
-      </form>
+            <Button type="submit" disabled={loading}>
+              {loading ? "Saving…" : "Change Password"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

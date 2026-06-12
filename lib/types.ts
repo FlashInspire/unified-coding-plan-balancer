@@ -62,6 +62,8 @@ export interface ProviderRow {
   updatedAt: Date;
 }
 
+export type ProviderApiStyle = "auto" | "openai" | "anthropic";
+
 export interface ProviderModelRow {
   id: string;
   modelId: string;
@@ -75,6 +77,7 @@ export interface ProviderModelRow {
   reasoningEffortOverride: string | null;
   includeReasoningInRequestOverride: boolean | null;
   weight: number;
+  apiStyle: string; // "auto" | "openai" | "anthropic" — typed as string to match Prisma/SQLite
   feeRateInput: number;
   feeRateCachedInput: number;
   feeRateOutput: number;
@@ -90,6 +93,13 @@ export interface ApiKeyRow {
   enabled: boolean;
   createdAt: Date;
   lastUsedAt: Date | null;
+  rollingQuota: number | null;
+  weekQuota: number | null;
+  monthQuota: number | null;
+  tokensUsed: number;
+  rollingQuotaResetAt: Date | null;
+  weekQuotaResetAt: Date | null;
+  monthQuotaResetAt: Date | null;
 }
 
 export interface AdminUserRow {

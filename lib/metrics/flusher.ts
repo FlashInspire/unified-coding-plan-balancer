@@ -2,8 +2,6 @@ import { env } from "@/lib/env";
 import { dateKey, shardStore } from "@/lib/metrics/shardStore";
 import { metricsBuffer, type RequestLogRecord } from "@/lib/metrics/buffer";
 
-let timer: NodeJS.Timeout | null = null;
-
 /**
  * Insert a new in-flight request log row directly into the shard DB.
  * Returns the autoincrement row ID so the caller can later update it.
@@ -184,25 +182,4 @@ export function flushOnce(): number {
     }
   }
   return batch.length;
-}
-
-export function startFlusher(): void {
-  if (timer) return;
-  timer = setInterval(() => {
-    try {
-      flushOnce();
-    } catch (err) {
-      console.warn(
-        "[metrics-flusher]",
-        err instanceof Error ? err.message : err,
-      );
-    }
-  }, env.METRICS_FLUSH_INTERVAL_MS);
-}
-
-export function stopFlusher(): void {
-  if (timer) {
-    clearInterval(timer);
-    timer = null;
-  }
 }

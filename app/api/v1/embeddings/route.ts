@@ -9,6 +9,7 @@ import { resolveProvider } from "@/lib/adapters/base";
 import { modelRepo } from "@/lib/repositories/modelRepo";
 import { providerModelRepo } from "@/lib/repositories/providerModelRepo";
 import { selectCandidates } from "@/lib/routing/selectCandidate";
+import { keyTokenBuffer } from "@/lib/quota/keyTokenBuffer";
 import { ensureBoot } from "@/lib/boot";
 
 const reqSchema = z.object({
@@ -22,6 +23,11 @@ export async function POST(req: Request): Promise<Response> {
   if (!bearer) return jsonErr(401, "Missing Authorization header");
   const key = await verifyApiKey(bearer);
   if (!key) return jsonErr(401, "Invalid API key");
+
+  // Check API key token quota.
+  if (keyTokenBuffer.isQuotaExceeded(key.id, 1)) {
+    return jsonErr(429, `API key "${key.name}" token quota exceeded`);
+  }
 
   let body: z.infer<typeof reqSchema>;
   try {
@@ -37,11 +43,13 @@ export async function POST(req: Request): Promise<Response> {
   if (!model || !model.enabled)
     return jsonErr(404, `Model "${body.model}" not found`);
 
-  const candidates = await providerModelRepo.findCandidates(
-    body.model,
-    "openai",
-  );
-  const sorted = selectCandidates(candidates);
+  const candidates = await providerModelRepo.findCandidates(body.model);
+  // Embeddings always use OpenAI protocol — filter to compatible candidates.
+  const openaiCandidates = candidates.filter((c) => {
+    if (c.pm.apiStyle === "anthropic") return false;
+    return !!c.provider.baseUrlOpenai;
+  });
+  const sorted = selectCandidates(openaiCandidates);
   if (sorted.length === 0)
     return jsonErr(404, `No provider for model "${body.model}"`);
 

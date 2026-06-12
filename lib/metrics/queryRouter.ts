@@ -36,19 +36,66 @@ export function recentLogs(
   opts: {
     days?: number;
     limit?: number;
+    offset?: number;
     apiKeyId?: string;
     modelId?: string;
+    providerId?: string;
+    status?: "ok" | "error" | "inflight";
+    search?: string;
+    from?: number;
+    to?: number;
   } = {},
-): RecentLogRow[] {
+): { rows: RecentLogRow[]; total: number } {
   const days = Math.max(1, opts.days ?? 2);
   const limit = Math.max(1, Math.min(1000, opts.limit ?? 100));
+  const offset = Math.max(0, opts.offset ?? 0);
   const shardKeys = listShards("log");
-  // Pull the last `days` shards (lexical sort is correct since YYYY-MM-DD).
   const recent = shardKeys.slice(-days);
   const today = dateKey();
   if (!recent.includes(today)) recent.push(today);
 
-  const rows: RecentLogRow[] = [];
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (opts.apiKeyId) {
+    conditions.push("api_key_id = ?");
+    params.push(opts.apiKeyId);
+  }
+  if (opts.modelId) {
+    conditions.push("model_id = ?");
+    params.push(opts.modelId);
+  }
+  if (opts.providerId) {
+    conditions.push("provider_id = ?");
+    params.push(opts.providerId);
+  }
+  if (opts.status === "ok") {
+    conditions.push("status >= 200 AND status < 400");
+  } else if (opts.status === "error") {
+    conditions.push("(status >= 400 OR (status > 0 AND status < 200))");
+  } else if (opts.status === "inflight") {
+    conditions.push("status = 0");
+  }
+  if (opts.search) {
+    conditions.push(
+      "(api_key_name LIKE ? OR model_id LIKE ? OR provider_name LIKE ? OR provider_id LIKE ?)",
+    );
+    const pat = `%${opts.search}%`;
+    params.push(pat, pat, pat, pat);
+  }
+  if (opts.from) {
+    conditions.push("ts >= ?");
+    params.push(opts.from);
+  }
+  if (opts.to) {
+    conditions.push("ts <= ?");
+    params.push(opts.to);
+  }
+
+  const where =
+    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  const allRows: RecentLogRow[] = [];
   for (const k of recent) {
     try {
       const db = shardStore.openLog(k);
@@ -60,25 +107,20 @@ export function recentLogs(
                   input_tokens, cached_input_tokens, output_tokens,
                   stream, error_code, user_agent,
                   real_model_id, ip
-             FROM request_log
-            WHERE (? IS NULL OR api_key_id = ?)
-              AND (? IS NULL OR model_id = ?)
-            ORDER BY ts DESC
-            LIMIT ?`,
+             FROM request_log ${where}
+            ORDER BY ts DESC`,
         )
-        .all(
-          opts.apiKeyId ?? null,
-          opts.apiKeyId ?? null,
-          opts.modelId ?? null,
-          opts.modelId ?? null,
-          limit,
-        ) as RecentLogRow[];
-      rows.push(...res);
+        .all(...params) as RecentLogRow[];
+      allRows.push(...res);
     } catch {
       /* shard may not exist yet */
     }
   }
-  return rows.sort((a, b) => b.ts - a.ts).slice(0, limit);
+
+  allRows.sort((a, b) => b.ts - a.ts);
+  const total = allRows.length;
+  const rows = allRows.slice(offset, offset + limit);
+  return { rows, total };
 }
 
 export interface UsageBucket {

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { computeNextResetAt } from "@/lib/quota/reset-scheduler";
+import {
+  computeNextResetAt,
+  computeNextKeyResetAt,
+  computeNextNaturalWeekReset,
+  computeNextNaturalMonthReset,
+} from "@/lib/quota/reset-scheduler";
 
 describe("computeNextResetAt", () => {
   // -----------------------------------------------------------------------
@@ -155,5 +160,103 @@ describe("computeNextResetAt", () => {
       expect(next.getUTCMonth()).toBe(1); // Feb
       expect(next.getUTCDate()).toBe(1);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ApiKey natural calendar resets
+// ---------------------------------------------------------------------------
+describe("computeNextKeyResetAt", () => {
+  const createdAt = new Date("2026-01-01T00:00:00Z");
+
+  it("rolling uses createdAt as anchor", () => {
+    // Use a createdAt close to now so slots align to same-day hours.
+    const createdAt2 = new Date("2026-06-12T00:00:00Z");
+    const now = new Date("2026-06-12T03:15:00Z");
+    const next = computeNextKeyResetAt("rolling", now, createdAt2);
+    // Slots: 00:00, 05:00, 10:00, ...
+    expect(next.getUTCHours()).toBe(5);
+    expect(next.getUTCMinutes()).toBe(0);
+  });
+
+  it("week returns next natural Monday", () => {
+    // 2026-06-12 is Friday
+    const now = new Date("2026-06-12T12:00:00Z");
+    const next = computeNextKeyResetAt("week", now, createdAt);
+    expect(next.getUTCDay()).toBe(1); // Monday
+    expect(next.getUTCDate()).toBe(15); // June 15
+    expect(next.getUTCHours()).toBe(0);
+    expect(next.getUTCMinutes()).toBe(0);
+  });
+
+  it("month returns next natural 1st of month", () => {
+    const now = new Date("2026-06-12T12:00:00Z");
+    const next = computeNextKeyResetAt("month", now, createdAt);
+    expect(next.getUTCMonth()).toBe(6); // July
+    expect(next.getUTCDate()).toBe(1);
+    expect(next.getUTCHours()).toBe(0);
+  });
+});
+
+describe("computeNextNaturalWeekReset", () => {
+  it("from Wednesday → next Monday", () => {
+    // 2026-06-10 is Wednesday
+    const now = new Date("2026-06-10T12:00:00Z");
+    const next = computeNextNaturalWeekReset(now);
+    expect(next.getUTCDay()).toBe(1);
+    expect(next.getUTCDate()).toBe(15); // Monday June 15
+  });
+
+  it("from Monday before midnight → this Monday", () => {
+    // 2026-06-15 is Monday, exactly midnight
+    const now = new Date("2026-06-15T00:00:00Z");
+    const next = computeNextNaturalWeekReset(now);
+    expect(next.toISOString()).toBe("2026-06-15T00:00:00.000Z");
+  });
+
+  it("from Monday past midnight → next Monday", () => {
+    const now = new Date("2026-06-15T00:00:01Z");
+    const next = computeNextNaturalWeekReset(now);
+    expect(next.getUTCDate()).toBe(22); // next Monday
+  });
+
+  it("from Sunday → next day (Monday)", () => {
+    // 2026-06-14 is Sunday
+    const now = new Date("2026-06-14T23:59:00Z");
+    const next = computeNextNaturalWeekReset(now);
+    expect(next.getUTCDay()).toBe(1);
+    expect(next.getUTCDate()).toBe(15);
+  });
+});
+
+describe("computeNextNaturalMonthReset", () => {
+  it("from mid-month → 1st of next month", () => {
+    const now = new Date("2026-06-15T12:00:00Z");
+    const next = computeNextNaturalMonthReset(now);
+    expect(next.getUTCMonth()).toBe(6); // July
+    expect(next.getUTCDate()).toBe(1);
+    expect(next.getUTCHours()).toBe(0);
+  });
+
+  it("from 1st at exactly midnight → next month 1st (already past)", () => {
+    const now = new Date("2026-07-01T00:00:00Z");
+    const next = computeNextNaturalMonthReset(now);
+    // Exactly at boundary → candidate equals now → falls through to next month
+    expect(next.toISOString()).toBe("2026-08-01T00:00:00.000Z");
+  });
+
+  it("from 1st past midnight → next month 1st", () => {
+    const now = new Date("2026-07-01T00:00:01Z");
+    const next = computeNextNaturalMonthReset(now);
+    expect(next.getUTCMonth()).toBe(7); // August
+    expect(next.getUTCDate()).toBe(1);
+  });
+
+  it("from Dec → Jan next year", () => {
+    const now = new Date("2026-12-20T10:00:00Z");
+    const next = computeNextNaturalMonthReset(now);
+    expect(next.getUTCFullYear()).toBe(2027);
+    expect(next.getUTCMonth()).toBe(0); // Jan
+    expect(next.getUTCDate()).toBe(1);
   });
 });

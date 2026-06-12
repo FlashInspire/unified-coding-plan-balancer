@@ -1,6 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export interface SelectOption {
   value: string;
@@ -21,13 +31,9 @@ interface FormDialogProps {
   fields: FieldDef[];
   onSubmit: (values: Record<string, unknown>) => Promise<void>;
   triggerLabel?: string;
-  /** If provided, the form opens in edit mode with these initial values. */
   initialValues?: Record<string, unknown>;
-  /** Label for the submit button (defaults to "Create" or "Save" in edit mode). */
   submitLabel?: string;
-  /** Controlled open state. When provided, the dialog is controlled externally. */
   open?: boolean;
-  /** Callback when dialog should close (for controlled mode). */
   onOpenChange?: (open: boolean) => void;
 }
 
@@ -45,7 +51,6 @@ export function FormDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Use controlled open if provided, otherwise internal state
   const isOpen = controlledOpen != null ? controlledOpen : internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
 
@@ -81,109 +86,103 @@ export function FormDialog({
   }
 
   return (
-    <>
+    <Dialog open={isOpen} onOpenChange={setOpen}>
       {triggerLabel && (
-        <button
-          onClick={() => setOpen(true)}
-          className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
-        >
-          {triggerLabel}
-        </button>
+        <DialogTrigger asChild>
+          <Button size="sm">{triggerLabel}</Button>
+        </DialogTrigger>
       )}
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg border bg-background p-5 shadow-lg">
-            <h2 className="text-lg font-semibold mb-4">{title}</h2>
-            <form onSubmit={handleSubmit} className="space-y-3">
-              {fields.map((f) => (
-                <div key={f.name}>
-                  <label className="text-xs font-medium block mb-1">
-                    {f.label}
-                    {f.required && (
-                      <span className="text-red-600 ml-0.5">*</span>
-                    )}
-                  </label>
-                  {f.type === "boolean" ? (
-                    <input
-                      type="checkbox"
-                      name={f.name}
-                      defaultChecked={Boolean(
-                        initialValues?.[f.name] ?? f.defaultValue,
-                      )}
-                      className="h-4 w-4"
-                    />
-                  ) : f.type === "select" ? (
-                    <select
-                      name={f.name}
-                      required={f.required}
-                      defaultValue={String(
-                        initialValues?.[f.name] ?? f.defaultValue ?? "",
-                      )}
-                      className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
-                    >
-                      <option value="">--</option>
-                      {f.options?.map((o) => {
-                        const val = typeof o === "string" ? o : o.value;
-                        const lbl = typeof o === "string" ? o : o.label;
-                        return (
-                          <option key={val} value={val}>
-                            {lbl}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  ) : f.type === "json" ? (
-                    <textarea
-                      name={f.name}
-                      rows={4}
-                      defaultValue={String(
-                        initialValues?.[f.name] != null
-                          ? JSON.stringify(initialValues[f.name], null, 2)
-                          : (f.defaultValue ?? "{}"),
-                      )}
-                      className="w-full rounded-md border bg-background px-2 py-1.5 text-sm font-mono"
-                    />
-                  ) : (
-                    <input
-                      type={f.type === "number" ? "number" : "text"}
-                      name={f.name}
-                      required={f.required}
-                      defaultValue={
-                        initialValues?.[f.name] != null
-                          ? String(initialValues[f.name])
-                          : f.defaultValue == null
-                            ? ""
-                            : String(f.defaultValue)
-                      }
-                      step={f.type === "number" ? "any" : undefined}
-                      className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
-                    />
+      <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          {fields.map((f) => (
+            <div key={f.name}>
+              <label className="text-xs font-medium block mb-1 text-foreground">
+                {f.label}
+                {f.required && (
+                  <span className="text-destructive ml-0.5">*</span>
+                )}
+              </label>
+              {f.type === "boolean" ? (
+                <input
+                  type="checkbox"
+                  name={f.name}
+                  defaultChecked={Boolean(
+                    initialValues?.[f.name] ?? f.defaultValue,
                   )}
-                </div>
-              ))}
-              {error && <div className="text-sm text-red-600">{error}</div>}
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="rounded-md border px-3 py-1.5 text-sm"
+                  className="h-4 w-4"
+                />
+              ) : f.type === "select" ? (
+                <select
+                  name={f.name}
+                  required={f.required}
+                  defaultValue={String(
+                    initialValues?.[f.name] ?? f.defaultValue ?? "",
+                  )}
+                  className="w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
-                >
-                  {submitting
-                    ? "..."
-                    : (submitLabel ?? (initialValues ? "Save" : "Create"))}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </>
+                  <option value="">--</option>
+                  {f.options?.map((o) => {
+                    const val = typeof o === "string" ? o : o.value;
+                    const lbl = typeof o === "string" ? o : o.label;
+                    return (
+                      <option key={val} value={val}>
+                        {lbl}
+                      </option>
+                    );
+                  })}
+                </select>
+              ) : f.type === "json" ? (
+                <textarea
+                  name={f.name}
+                  rows={4}
+                  defaultValue={String(
+                    initialValues?.[f.name] != null
+                      ? JSON.stringify(initialValues[f.name], null, 2)
+                      : (f.defaultValue ?? "{}"),
+                  )}
+                  className="w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm font-mono focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                />
+              ) : (
+                <Input
+                  type={f.type === "number" ? "number" : "text"}
+                  name={f.name}
+                  required={f.required}
+                  defaultValue={
+                    initialValues?.[f.name] != null
+                      ? String(initialValues[f.name])
+                      : f.defaultValue == null
+                        ? ""
+                        : String(f.defaultValue)
+                  }
+                  step={f.type === "number" ? "any" : undefined}
+                />
+              )}
+            </div>
+          ))}
+          {error && (
+            <div className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+              {error}
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting
+                ? "..."
+                : (submitLabel ?? (initialValues ? "Save" : "Create"))}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

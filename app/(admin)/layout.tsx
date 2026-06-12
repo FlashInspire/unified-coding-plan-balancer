@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { SignOutButton } from "@/app/(admin)/_components/sign-out-button";
+import { Sidebar, MobileSidebar } from "@/app/(admin)/_components/sidebar";
 
 export const metadata: Metadata = {
   title: "Unified Coding Plan Balancer — Admin",
@@ -13,28 +12,15 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-background">
-      <nav className="border-b">
-        <div className="mx-auto flex h-14 max-w-7xl items-center px-4">
-          <Link href="/" className="font-bold">
-            UCPB
-          </Link>
-          <div className="ml-8 flex gap-4 text-sm">
-            <Link href="/providers">Providers</Link>
-            <Link href="/models">Models</Link>
-            <Link href="/provider-models">Provider-Models</Link>
-            <Link href="/api-keys">API Keys</Link>
-            <Link href="/quota">Quota</Link>
-            <Link href="/logs">Logs & Usage</Link>
-            <Link href="/users">Users</Link>
-            <Link href="/settings">Settings</Link>
-          </div>
-          <div className="ml-auto">
-            <SignOutButton />
-          </div>
-        </div>
-      </nav>
-      <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+    <div className="flex h-screen overflow-hidden bg-background">
+      <Sidebar />
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <header className="flex h-14 items-center gap-3 border-b px-4 lg:px-6">
+          <MobileSidebar />
+          <div className="flex-1" />
+        </header>
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
+      </div>
     </div>
   );
 }

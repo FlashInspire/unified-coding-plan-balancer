@@ -60,6 +60,7 @@ function mkCandidate(
     reasoningEffortOverride: null,
     includeReasoningInRequestOverride: null,
     weight,
+    apiStyle: "auto",
     feeRateInput: 1,
     feeRateCachedInput: 0.1,
     feeRateOutput: 4,

@@ -66,6 +66,7 @@ const basePm: ProviderModelRow = {
   reasoningEffortOverride: null,
   includeReasoningInRequestOverride: null,
   weight: 1,
+  apiStyle: "auto",
   feeRateInput: 1,
   feeRateCachedInput: 0.1,
   feeRateOutput: 4,

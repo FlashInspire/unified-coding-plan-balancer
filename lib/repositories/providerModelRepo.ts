@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import type { ApiMode, ProviderModelRow, ProviderRow } from "@/lib/types";
+import type {
+  ProviderApiStyle,
+  ProviderModelRow,
+  ProviderRow,
+} from "@/lib/types";
 import { activeRequests } from "@/lib/routing/activeRequests";
 
 export interface ProviderModelInput {
@@ -14,6 +18,7 @@ export interface ProviderModelInput {
   reasoningEffortOverride?: string | null;
   includeReasoningInRequestOverride?: boolean | null;
   weight?: number;
+  apiStyle?: ProviderApiStyle;
   feeRateInput?: number;
   feeRateCachedInput?: number;
   feeRateOutput?: number;
@@ -55,6 +60,7 @@ export const providerModelRepo = {
         includeReasoningInRequestOverride:
           input.includeReasoningInRequestOverride ?? null,
         weight: input.weight ?? 1,
+        apiStyle: input.apiStyle ?? "auto",
         feeRateInput: input.feeRateInput ?? 1.0,
         feeRateCachedInput: input.feeRateCachedInput ?? 0.1,
         feeRateOutput: input.feeRateOutput ?? 4.0,
@@ -96,28 +102,14 @@ export const providerModelRepo = {
     return rows.map((r) => r.modelId);
   },
 
-  /** Find all candidates for routing a given model_id, filtered by protocol. */
-  async findCandidates(
-    modelId: string,
-    apiModeIn: ApiMode,
-    includeAllProtocols = false,
-  ): Promise<RoutingCandidate[]> {
-    // Build the Prisma filter based on which baseUrl the protocol requires.
-    // When includeAllProtocols is true, skip the protocol filter so that
-    // cross-protocol candidates are also returned.
-    const protocolFilter = includeAllProtocols
-      ? {}
-      : apiModeIn === "openai"
-        ? { baseUrlOpenai: { not: null } }
-        : { baseUrlAnthropic: { not: null } };
-
+  /** Find all enabled candidates for routing a given model_id. */
+  async findCandidates(modelId: string): Promise<RoutingCandidate[]> {
     const rows = await prisma.providerModel.findMany({
       where: {
         modelId,
         enabled: true,
         provider: {
           enabled: true,
-          ...protocolFilter,
         },
       },
       include: {

@@ -18,6 +18,7 @@ const createSchema = z.object({
     .optional(),
   includeReasoningInRequestOverride: z.boolean().nullable().optional(),
   weight: z.number().int().min(0).optional(),
+  apiStyle: z.enum(["auto", "openai", "anthropic"]).optional(),
   feeRateInput: z.number().min(0).optional(),
   feeRateCachedInput: z.number().min(0).optional(),
   feeRateOutput: z.number().min(0).optional(),

@@ -5,6 +5,9 @@ import { apiKeyRepo } from "@/lib/repositories/apiKeyRepo";
 
 const createSchema = z.object({
   name: z.string().min(1),
+  rollingQuota: z.number().int().nonnegative().nullable().optional(),
+  weekQuota: z.number().int().nonnegative().nullable().optional(),
+  monthQuota: z.number().int().nonnegative().nullable().optional(),
 });
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -19,7 +22,11 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (denied) return denied;
   try {
     const data = createSchema.parse(await req.json());
-    const created = await apiKeyRepo.create(data.name);
+    const created = await apiKeyRepo.create(data.name, {
+      rollingQuota: data.rollingQuota ?? null,
+      weekQuota: data.weekQuota ?? null,
+      monthQuota: data.monthQuota ?? null,
+    });
     // plaintext returned ONCE
     return Response.json({ data: created });
   } catch (e) {

@@ -8,8 +8,6 @@ import * as path from "node:path";
 import { env } from "@/lib/env";
 import { listShards } from "@/lib/metrics/shardStore";
 
-let timer: NodeJS.Timeout | null = null;
-
 function purgeLogs(): number {
   const cutoff = new Date(Date.now() - env.LOG_RETENTION_DAYS * 86_400_000);
   const cutoffKey = cutoff.toISOString().slice(0, 10);
@@ -69,33 +67,4 @@ function purgeStats(): number {
 
 export function archiveOnce(): { logs: number; stats: number } {
   return { logs: purgeLogs(), stats: purgeStats() };
-}
-
-export function startArchiver(): void {
-  if (timer) return;
-  // Run once at boot, then every 24h.
-  setTimeout(() => {
-    try {
-      archiveOnce();
-    } catch {
-      /* ignore */
-    }
-  }, 60_000).unref?.();
-  timer = setInterval(
-    () => {
-      try {
-        archiveOnce();
-      } catch {
-        /* ignore */
-      }
-    },
-    24 * 3600 * 1000,
-  );
-}
-
-export function stopArchiver(): void {
-  if (timer) {
-    clearInterval(timer);
-    timer = null;
-  }
 }

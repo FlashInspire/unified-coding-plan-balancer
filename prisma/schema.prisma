@@ -100,6 +100,8 @@ model ProviderModel {
 
   // Routing weight for ties in remaining quota.
   weight             Int     @default(1)
+  // API style override: "auto" (follow client), "openai" or "anthropic" (force upstream protocol).
+  apiStyle           String  @default("auto")
   // Fee rates: per-request (request mode) or per-token costs (token mode).
   feeRateInput       Float   @default(1.0)
   feeRateCachedInput Float   @default(0.1)
@@ -122,12 +124,20 @@ model ProviderModel {
 // Prefix is always "sk-y6-"; the full key = "sk-y6-" + randomPart.
 // -----------------------------------------------------------------------------
 model ApiKey {
-  id         String    @id @default(cuid())
-  keyHash    String    @unique // SHA-256 hex of plaintext key
-  name       String
-  enabled    Boolean   @default(true)
-  createdAt  DateTime  @default(now())
-  lastUsedAt DateTime?
+  id                  String    @id @default(cuid())
+  keyHash             String    @unique // SHA-256 hex of plaintext key
+  name                String
+  enabled             Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  lastUsedAt          DateTime?
+  // Token quota (null or 0 = unlimited)
+  rollingQuota        Int?
+  weekQuota           Int?
+  monthQuota          Int?
+  tokensUsed          Int       @default(0) // current period tokens (input+cached+output)
+  rollingQuotaResetAt DateTime?
+  weekQuotaResetAt    DateTime?
+  monthQuotaResetAt   DateTime?
 }
 
 // -----------------------------------------------------------------------------

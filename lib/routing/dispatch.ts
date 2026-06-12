@@ -35,6 +35,7 @@ import { getStickyProvider, setStickyProvider } from "@/lib/routing/sticky";
 import { resolveModelParams } from "@/lib/routing/resolveParams";
 import { activeRequests } from "@/lib/routing/activeRequests";
 import { env } from "@/lib/env";
+import { keyTokenBuffer } from "@/lib/quota/keyTokenBuffer";
 import type {
   ApiMode,
   ModelRow,
@@ -63,8 +64,22 @@ export class AllCandidatesFailedError extends Error {
       status: number;
       message: string;
     }[],
+    /**
+     * When the last candidate failed with a non-retryable upstream error
+     * (e.g. 400, 401, 403, 422), these fields carry the original error
+     * so the route handler can forward it verbatim to the client.
+     */
+    public readonly upstreamStatus?: number,
+    public readonly upstreamBody?: string,
   ) {
     super(`All ${attempts.length} candidates for "${modelId}" failed`);
+  }
+}
+
+export class ApiKeyQuotaExceededError extends Error {
+  readonly status = 429;
+  constructor(keyName: string) {
+    super(`API key "${keyName}" token quota exceeded`);
   }
 }
 
@@ -155,17 +170,29 @@ function trackQuotaExhaustedRetry(c: RoutingCandidate): void {
 
 /**
  * Determine which API mode a candidate provider supports for the given
- * client protocol. Returns the mode to use for the upstream call, or null
- * if the provider has no usable endpoint at all.
+ * client protocol, respecting the ProviderModel's apiStyle override.
  *
- * Prefers same-protocol (returns `preferred` when available), otherwise
- * falls back to the other protocol if the provider has it configured.
+ * Priority:
+ * 1. If apiStyle is "openai" or "anthropic", force that protocol (if available).
+ * 2. If apiStyle is "auto", prefer same-protocol, then fallback to the other.
+ * Returns null if the provider has no usable endpoint at all.
  */
 function candidateApiMode(
   c: RoutingCandidate,
   preferred: ApiMode,
 ): ApiMode | null {
   const p = c.provider;
+  const pmStyle = c.pm.apiStyle;
+
+  // Forced apiStyle: always use the specified protocol.
+  if (pmStyle === "openai") {
+    return p.baseUrlOpenai ? "openai" : null;
+  }
+  if (pmStyle === "anthropic") {
+    return p.baseUrlAnthropic ? "anthropic" : null;
+  }
+
+  // apiStyle === "auto": prefer same-protocol, fallback to other.
   if (preferred === "openai") {
     if (p.baseUrlOpenai) return "openai";
     if (p.baseUrlAnthropic) return "anthropic";
@@ -183,14 +210,26 @@ export async function dispatchChat(
   ctx: DispatchContext,
   extra?: Pick<NormalizedChatRequest, "extraParams" | "rawMessages">,
 ): Promise<DispatchSuccess> {
+  // Check API key token quota before doing any work.
+  if (keyTokenBuffer.isQuotaExceeded(ctx.apiKeyId, 1)) {
+    throw new ApiKeyQuotaExceededError(ctx.apiKeyName);
+  }
+
   const model = await loadModel(modelId);
-  // First try same-protocol candidates.
-  let all = await providerModelRepo.findCandidates(modelId, ctx.apiModeIn);
-  let sorted = selectCandidates(all);
-  // If no same-protocol candidates, retry including cross-protocol.
+  // Fetch all enabled candidates and split by protocol compatibility.
+  const all = await providerModelRepo.findCandidates(modelId);
+  const sameProtocol = all.filter(
+    (c) => candidateApiMode(c, ctx.apiModeIn) === ctx.apiModeIn,
+  );
+  let sorted = selectCandidates(sameProtocol);
+  // If no same-protocol candidates, try cross-protocol.
   if (sorted.length === 0) {
-    all = await providerModelRepo.findCandidates(modelId, ctx.apiModeIn, true);
-    sorted = selectCandidates(all);
+    const crossProtocol = all.filter(
+      (c) =>
+        candidateApiMode(c, ctx.apiModeIn) !== null &&
+        candidateApiMode(c, ctx.apiModeIn) !== ctx.apiModeIn,
+    );
+    sorted = selectCandidates(crossProtocol);
   }
   if (sorted.length === 0) {
     throw new NoCandidateError(
@@ -343,6 +382,12 @@ export async function dispatchChat(
       } catch {
         /* never block successful response on quota counter write */
       }
+      // Record API key token usage (buffered, flushed by cron).
+      const totalKeyTokens =
+        resp.usage.inputTokens +
+        resp.usage.cachedInputTokens +
+        resp.usage.outputTokens;
+      keyTokenBuffer.increment(ctx.apiKeyId, totalKeyTokens);
       // Record sticky routing for future requests from this key.
       // Fire-and-forget — never block the response on sticky write.
       setStickyProvider(
@@ -385,7 +430,17 @@ export async function dispatchChat(
         markTransientFailure(c.provider.id);
         continue;
       }
-      throw new AllCandidatesFailedError(modelId, failures);
+      // Non-retryable error: forward the original upstream error to the client.
+      const upstreamStatus =
+        err instanceof UpstreamError ? err.status : undefined;
+      const upstreamBody =
+        err instanceof UpstreamError ? err.bodyText : undefined;
+      throw new AllCandidatesFailedError(
+        modelId,
+        failures,
+        upstreamStatus,
+        upstreamBody,
+      );
     }
   }
   throw new AllCandidatesFailedError(modelId, failures);
@@ -411,14 +466,26 @@ export async function dispatchChatStream(
   ctx: DispatchContext,
   extra?: Pick<NormalizedChatRequest, "extraParams" | "rawMessages">,
 ): Promise<DispatchStreamResult> {
+  // Check API key token quota before doing any work.
+  if (keyTokenBuffer.isQuotaExceeded(ctx.apiKeyId, 1)) {
+    throw new ApiKeyQuotaExceededError(ctx.apiKeyName);
+  }
+
   const model = await loadModel(modelId);
-  // First try same-protocol candidates.
-  let all = await providerModelRepo.findCandidates(modelId, ctx.apiModeIn);
-  let sorted = selectCandidates(all);
-  // If no same-protocol candidates, retry including cross-protocol.
+  // Fetch all enabled candidates and split by protocol compatibility.
+  const all = await providerModelRepo.findCandidates(modelId);
+  const sameProtocol = all.filter(
+    (c) => candidateApiMode(c, ctx.apiModeIn) === ctx.apiModeIn,
+  );
+  let sorted = selectCandidates(sameProtocol);
+  // If no same-protocol candidates, try cross-protocol.
   if (sorted.length === 0) {
-    all = await providerModelRepo.findCandidates(modelId, ctx.apiModeIn, true);
-    sorted = selectCandidates(all);
+    const crossProtocol = all.filter(
+      (c) =>
+        candidateApiMode(c, ctx.apiModeIn) !== null &&
+        candidateApiMode(c, ctx.apiModeIn) !== ctx.apiModeIn,
+    );
+    sorted = selectCandidates(crossProtocol);
   }
   if (sorted.length === 0) {
     throw new NoCandidateError(
@@ -543,7 +610,17 @@ export async function dispatchChatStream(
         markTransientFailure(c.provider.id);
         continue;
       }
-      throw new AllCandidatesFailedError(modelId, failures);
+      // Non-retryable error: forward the original upstream error to the client.
+      const upstreamStatus =
+        err instanceof UpstreamError ? err.status : undefined;
+      const upstreamBody =
+        err instanceof UpstreamError ? err.bodyText : undefined;
+      throw new AllCandidatesFailedError(
+        modelId,
+        failures,
+        upstreamStatus,
+        upstreamBody,
+      );
     }
   }
   throw new AllCandidatesFailedError(modelId, failures);
@@ -645,6 +722,10 @@ function wrapStream(
           } catch {
             /* never block stream completion on quota counter write */
           }
+          // Record API key token usage (buffered, flushed by cron).
+          const totalKeyTokens =
+            usage.inputTokens + usage.cachedInputTokens + outTokens;
+          keyTokenBuffer.increment(ctx.ctx.apiKeyId, totalKeyTokens);
           // Record sticky routing for future requests from this key.
           // Fire-and-forget — never block the stream on sticky write.
           setStickyProvider(
@@ -804,9 +885,16 @@ export async function dispatchDirectChat(
       apiKeyName: ctx.apiKeyName,
       userAgent: ctx.userAgent,
     });
-    throw new AllCandidatesFailedError(modelId, [
-      { providerId: c.provider.id, status, message },
-    ]);
+    const upstreamStatus =
+      err instanceof UpstreamError ? err.status : undefined;
+    const upstreamBody =
+      err instanceof UpstreamError ? err.bodyText : undefined;
+    throw new AllCandidatesFailedError(
+      modelId,
+      [{ providerId: c.provider.id, status, message }],
+      upstreamStatus,
+      upstreamBody,
+    );
   }
 }
 

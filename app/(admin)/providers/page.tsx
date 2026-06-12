@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Accordion } from "../_components/accordion";
 import { FormDialog } from "../_components/form-dialog";
 import { apiFetch } from "../_components/api";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ChevronDown, ChevronRight, Pencil, Trash2 } from "lucide-react";
 import type { ProviderRow } from "@/lib/types";
 
 const PROVIDER_FIELDS = [
@@ -177,6 +180,7 @@ export default function ProvidersPage() {
   const [data, setData] = useState<ProviderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editRow, setEditRow] = useState<ProviderRow | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -202,18 +206,23 @@ export default function ProvidersPage() {
     header: (
       <div className="flex items-center gap-3 min-w-0">
         <span
-          className={`inline-block h-2.5 w-2.5 rounded-full shrink-0 ${
+          className={`inline-block h-2 w-2 rounded-full shrink-0 ${
             p.enabled ? "bg-green-500" : "bg-gray-400"
           }`}
           title={p.enabled ? "Enabled" : "Disabled"}
         />
-        <div className="min-w-0">
-          <span className="font-semibold text-sm">{p.name}</span>
-          <span className="text-muted-foreground text-xs ml-2">{p.id}</span>
+        <div className="min-w-0 flex-1">
+          <span className="font-medium text-sm">{p.name}</span>
+          <span className="text-muted-foreground text-xs ml-2 font-mono">
+            {p.id}
+          </span>
           {p.quotaRunningOut && (
-            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 ml-2">
+            <Badge
+              variant="secondary"
+              className="text-[10px] bg-amber-100 text-amber-800 ml-2"
+            >
               Running out
-            </span>
+            </Badge>
           )}
         </div>
         <div className="ml-auto flex gap-3 text-xs text-muted-foreground shrink-0">
@@ -343,18 +352,19 @@ export default function ProvidersPage() {
 
         {/* Actions */}
         <div className="flex gap-2">
-          <button
-            className="text-xs hover:underline"
-            onClick={() => setEditRow(p)}
-          >
+          <Button variant="ghost" size="xs" onClick={() => setEditRow(p)}>
+            <Pencil className="h-3 w-3" />
             Edit
-          </button>
-          <button
-            className="text-xs hover:underline text-destructive"
+          </Button>
+          <Button
+            variant="ghost"
+            size="xs"
+            className="text-destructive"
             onClick={() => handleDelete(p.id)}
           >
+            <Trash2 className="h-3 w-3" />
             Delete
-          </button>
+          </Button>
         </div>
       </div>
     ),
@@ -363,7 +373,7 @@ export default function ProvidersPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Providers</h1>
+        <h1 className="text-xl font-semibold">Providers</h1>
         <FormDialog
           title="New Provider"
           triggerLabel="+ New Provider"
@@ -407,11 +417,45 @@ export default function ProvidersPage() {
       />
 
       {loading ? (
-        <div className="text-muted-foreground">Loading...</div>
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </div>
       ) : data.length === 0 ? (
-        <div className="text-muted-foreground">No providers yet.</div>
+        <div className="text-muted-foreground text-sm">No providers yet.</div>
       ) : (
-        <Accordion items={accordionItems} />
+        <div className="space-y-2">
+          {data.map((p) => {
+            const isOpen = openId === p.id;
+            return (
+              <div
+                key={p.id}
+                className="rounded-lg border bg-card overflow-hidden"
+              >
+                <button
+                  type="button"
+                  onClick={() => setOpenId(isOpen ? null : p.id)}
+                  className="flex w-full items-center px-4 py-3 text-left hover:bg-accent/30 transition-colors"
+                >
+                  <div className="mr-2 text-muted-foreground">
+                    {isOpen ? (
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    ) : (
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    )}
+                  </div>
+                  {accordionItems.find((a) => a.id === p.id)?.header}
+                </button>
+                {isOpen && (
+                  <div className="border-t px-4 py-4 bg-muted/10">
+                    {accordionItems.find((a) => a.id === p.id)?.body}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

@@ -20,6 +20,7 @@ import {
   dispatchDirectChatStream,
   NoCandidateError,
   AllCandidatesFailedError,
+  ApiKeyQuotaExceededError,
   type DispatchContext,
 } from "@/lib/routing/dispatch";
 import { ensureBoot } from "@/lib/boot";
@@ -261,13 +262,35 @@ export async function POST(req: Request): Promise<Response> {
       return Response.json(resp);
     }
   } catch (err) {
+    if (err instanceof ApiKeyQuotaExceededError)
+      return jsonErr(429, err.message);
     if (err instanceof NoCandidateError) return jsonErr(404, err.message);
-    if (err instanceof AllCandidatesFailedError)
+    if (err instanceof AllCandidatesFailedError) {
+      // Forward the original upstream error verbatim if available.
+      if (err.upstreamStatus && err.upstreamBody) {
+        return upstreamErr(err.upstreamStatus, err.upstreamBody);
+      }
       return jsonErr(502, err.message);
+    }
     return jsonErr(500, "Internal error");
   }
 }
 
 function jsonErr(status: number, message: string): Response {
   return Response.json({ error: { message, type: "error" } }, { status });
+}
+
+/** Forward an upstream error body verbatim to the client. */
+function upstreamErr(status: number, body: string): Response {
+  // Try to detect JSON upstream errors and forward as-is.
+  try {
+    const json = JSON.parse(body);
+    return Response.json(json, { status });
+  } catch {
+    // Not JSON — wrap in Anthropic-style error envelope.
+    return Response.json(
+      { type: "error", error: { type: "upstream_error", message: body } },
+      { status },
+    );
+  }
 }

@@ -1,11 +1,22 @@
 "use client";
 
 import React, { useState, useTransition } from "react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { ChevronRight, ChevronDown, Trash2 } from "lucide-react";
 
 interface Column<T> {
   key: string;
   label: string;
   render?: (row: T) => React.ReactNode;
+  className?: string;
 }
 
 interface DataTableProps<T> {
@@ -14,9 +25,7 @@ interface DataTableProps<T> {
   idKey: keyof T;
   onDelete?: (id: string) => Promise<void>;
   actions?: (row: T) => React.ReactNode;
-  /** Enable expandable/collapsible rows. Clicking a row toggles its detail panel. */
   expandable?: boolean;
-  /** Render the expanded detail panel for a row. */
   detailRender?: (row: T) => React.ReactNode;
 }
 
@@ -45,63 +54,65 @@ export function DataTable<T extends Record<string, unknown>>({
     });
   }
 
+  const totalCols = columns.length + (onDelete || actions ? 1 : 0);
+
   return (
-    <div className="overflow-x-auto rounded-md border">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b bg-muted/50">
-            {expandable && <th className="px-2 py-2 w-6" />}
-            {columns.map((c) => (
-              <th key={c.key} className="px-3 py-2 text-left font-medium">
-                {c.label}
-              </th>
-            ))}
-            {(onDelete || actions) && (
-              <th className="px-3 py-2 text-left font-medium">Actions</th>
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {data.length === 0 && (
-            <tr>
-              <td
-                colSpan={
-                  columns.length +
-                  (onDelete || actions ? 1 : 0) +
-                  (expandable ? 1 : 0)
-                }
-                className="px-3 py-6 text-center text-muted-foreground"
-              >
-                No data
-              </td>
-            </tr>
+    <Table>
+      <TableHeader>
+        <TableRow className="hover:bg-transparent">
+          {expandable && <TableHead className="w-6" />}
+          {columns.map((c) => (
+            <TableHead key={c.key} className={c.className}>
+              {c.label}
+            </TableHead>
+          ))}
+          {(onDelete || actions) && (
+            <TableHead className="w-20">Actions</TableHead>
           )}
-          {data.map((row, i) => {
-            const id = String(row[idKey] ?? i);
-            const isExpanded = expandedIds.has(id);
-            return (
-              <React.Fragment key={id}>
-                <tr
-                  className={`border-b last:border-0 cursor-pointer ${
-                    isExpanded ? "bg-muted/20" : ""
-                  } hover:bg-muted/10`}
-                  onClick={() => toggleExpand(id)}
-                >
-                  {expandable && (
-                    <td className="px-2 py-2 text-muted-foreground text-xs select-none">
-                      {isExpanded ? "▼" : "▶"}
-                    </td>
-                  )}
-                  {columns.map((c) => (
-                    <td key={c.key} className="px-3 py-2">
-                      {c.render ? c.render(row) : String(row[c.key] ?? "")}
-                    </td>
-                  ))}
-                  {(onDelete || actions) && (
-                    <td className="px-3 py-2 space-x-2">
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {data.length === 0 && (
+          <TableRow>
+            <TableCell
+              colSpan={totalCols + (expandable ? 1 : 0)}
+              className="h-20 text-center text-muted-foreground"
+            >
+              No data
+            </TableCell>
+          </TableRow>
+        )}
+        {data.map((row, i) => {
+          const id = String(row[idKey] ?? i);
+          const isExpanded = expandedIds.has(id);
+          return (
+            <React.Fragment key={id}>
+              <TableRow
+                className={expandable ? "cursor-pointer" : ""}
+                onClick={expandable ? () => toggleExpand(id) : undefined}
+              >
+                {expandable && (
+                  <TableCell className="w-6 text-muted-foreground">
+                    {isExpanded ? (
+                      <ChevronDown className="h-3 w-3" />
+                    ) : (
+                      <ChevronRight className="h-3 w-3" />
+                    )}
+                  </TableCell>
+                )}
+                {columns.map((c) => (
+                  <TableCell key={c.key} className={c.className}>
+                    {c.render ? c.render(row) : String(row[c.key] ?? "")}
+                  </TableCell>
+                ))}
+                {(onDelete || actions) && (
+                  <TableCell className="w-20">
+                    <div className="flex items-center gap-1">
                       {actions?.(row)}
                       {onDelete && (
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
                           disabled={deleting === id}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -112,33 +123,28 @@ export function DataTable<T extends Record<string, unknown>>({
                               setDeleting(null);
                             });
                           }}
-                          className="text-red-600 hover:underline disabled:opacity-50 text-xs"
                         >
-                          {deleting === id ? "..." : "Delete"}
-                        </button>
+                          <Trash2 className="h-3 w-3 text-destructive" />
+                        </Button>
                       )}
-                    </td>
-                  )}
-                </tr>
-                {isExpanded && detailRender && (
-                  <tr className="border-b last:border-0 bg-muted/5">
-                    <td
-                      colSpan={
-                        columns.length +
-                        (expandable ? 1 : 0) +
-                        (onDelete || actions ? 1 : 0)
-                      }
-                      className="px-6 py-3 text-xs"
-                    >
-                      {detailRender(row)}
-                    </td>
-                  </tr>
+                    </div>
+                  </TableCell>
                 )}
-              </React.Fragment>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+              </TableRow>
+              {isExpanded && detailRender && (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell
+                    colSpan={totalCols + (expandable ? 1 : 0)}
+                    className="bg-muted/30 px-6 py-3 text-xs"
+                  >
+                    {detailRender(row)}
+                  </TableCell>
+                </TableRow>
+              )}
+            </React.Fragment>
+          );
+        })}
+      </TableBody>
+    </Table>
   );
 }
