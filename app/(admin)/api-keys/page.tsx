@@ -204,11 +204,11 @@ export default function ApiKeysPage() {
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-10 w-full" />
+            <Skeleton key={i} className="h-7 w-full" />
           ))}
         </div>
       ) : data.length === 0 ? (
-        <div className="text-muted-foreground text-sm">No API keys yet.</div>
+        <div className="text-muted-foreground text-xs">No API keys yet.</div>
       ) : (
         <DataTable
           idKey="id"
@@ -241,7 +241,7 @@ export default function ApiKeysPage() {
                 const k = r as unknown as ApiKeyRow;
                 return (
                   <div className="min-w-0">
-                    <span className="font-medium text-sm">{k.name}</span>
+                    <span className="font-medium text-xs">{k.name}</span>
                     <span className="text-muted-foreground text-xs ml-2 font-mono">
                       {k.id.slice(0, 8)}…
                     </span>

@@ -30,6 +30,11 @@ function body(req: NormalizedChatRequest, stream: boolean) {
   out.max_tokens =
     (req.extraParams?.max_tokens as number | undefined) ?? req.maxTokens;
   out.stream = stream;
+  // OpenAI-compatible APIs only include `usage` in the final streaming chunk
+  // when stream_options is set. Without this, token counts are always 0.
+  if (stream) {
+    out.stream_options = { include_usage: true };
+  }
 
   return out;
 }

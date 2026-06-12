@@ -27,6 +27,7 @@ interface DataTableProps<T> {
   actions?: (row: T) => React.ReactNode;
   expandable?: boolean;
   detailRender?: (row: T) => React.ReactNode;
+  tableClassName?: string;
 }
 
 export function DataTable<T extends Record<string, unknown>>({
@@ -37,6 +38,7 @@ export function DataTable<T extends Record<string, unknown>>({
   actions,
   expandable,
   detailRender,
+  tableClassName,
 }: DataTableProps<T>) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -57,7 +59,7 @@ export function DataTable<T extends Record<string, unknown>>({
   const totalCols = columns.length + (onDelete || actions ? 1 : 0);
 
   return (
-    <Table>
+    <Table className={tableClassName}>
       <TableHeader>
         <TableRow className="hover:bg-transparent">
           {expandable && <TableHead className="w-6" />}

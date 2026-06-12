@@ -18,14 +18,13 @@
 
 ---
 
-## ⚠️ 重要提示：协议匹配
+## 🧪 实验性功能：跨协议转换
 
-> **本网关不进行跨协议转换。** 客户端协议必须与上游服务商的协议一致。
+> **本网关支持实验性的跨协议转换。** 当客户端协议与上游服务商配置的端点不匹配时，网关会自动进行请求和响应的协议转换。
 >
-> 如果你使用 **Anthropic 协议客户端**（如 Anthropic SDK、Claude Code），上游服务商**必须**配置 Anthropic 兼容的端点（`baseUrlAnthropic` + `apiKeyAnthropic`）。
-> 如果你使用 **OpenAI 协议客户端**（如 OpenAI SDK），上游服务商**必须**配置 OpenAI 兼容的端点（`baseUrlOpenai` + `apiKeyOpenai`）。
+> 例如，OpenAI 协议客户端可以调用仅配置了 Anthropic 端点的服务商（反之亦然）。转换层负责请求规范化、响应格式转换和流式 Chunk 适配。
 >
-> 混合协议（如 Anthropic 客户端 → OpenAI 上游）**不受支持**，会导致请求失败。
+> ⚠️ 跨协议转换目前为**实验性功能**。虽然基本功能可用，但可能无法保留所有服务商特定特性（如推理块、Tool Use 边界场景）。建议在条件允许时优先使用匹配协议。
 
 ---
 
@@ -60,12 +59,14 @@ Unified Coding Plan Balancer 是一个部署在你的应用和多个上游 AI �
 
 同时暴露 **OpenAI** 和 **Anthropic** 兼容的 API 端点。客户端必须使用与其协议匹配的端点。每个服务商可以分别配置各协议的端点和密钥（`baseUrlOpenai`/`apiKeyOpenai` 和 `baseUrlAnthropic`/`apiKeyAnthropic`）。
 
-| 客户端协议 | 上游协议  | 处理方式 |
-| :--------: | :-------: | -------- |
-|   OpenAI   |  OpenAI   | 直接透传 |
-| Anthropic  | Anthropic | 直接透传 |
+| 客户端协议 | 上游协议  | 处理方式      |
+| :--------: | :-------: | ------------- |
+|   OpenAI   |  OpenAI   | 直接透传      |
+| Anthropic  | Anthropic | 直接透传      |
+|   OpenAI   | Anthropic | 🧪 跨协议转换 |
+| Anthropic  |  OpenAI   | 🧪 跨协议转换 |
 
-> ⚠️ **不支持跨协议路由。** OpenAI 客户端不能调用 Anthropic 上游，反之亦然。
+> 🧪 **跨协议路由为实验性功能。** 当客户端与上游服务商使用不同协议时，网关会自动在 OpenAI 和 Anthropic 协议之间进行转换。
 
 ### 🎯 配额感知智能路由
 

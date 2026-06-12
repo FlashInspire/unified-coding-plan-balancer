@@ -18,14 +18,13 @@
 
 ---
 
-## ⚠️ Important: Protocol Matching
+## 🧪 Experimental: Cross-Protocol Translation
 
-> **This gateway does NOT perform cross-protocol translation.** The client protocol must match the upstream provider's protocol.
+> **This gateway supports experimental cross-protocol translation.** When a client uses a protocol that doesn't match the upstream provider's configured endpoint, the gateway will automatically translate the request and response.
 >
-> If you are using an **Anthropic-protocol client** (e.g., Anthropic SDK, Claude Code), your upstream provider **must** have an Anthropic-compatible endpoint configured (`baseUrlAnthropic` + `apiKeyAnthropic`).
-> If you are using an **OpenAI-protocol client** (e.g., OpenAI SDK), your upstream provider **must** have an OpenAI-compatible endpoint configured (`baseUrlOpenai` + `apiKeyOpenai`).
+> For example, an OpenAI-protocol client can call an Anthropic-only provider (and vice versa). The translation layer handles request normalization, response conversion, and streaming chunk adaptation.
 >
-> Mixing protocols (e.g., Anthropic client → OpenAI upstream) is **not supported** and will result in errors.
+> ⚠️ Cross-protocol translation is **experimental**. While functional, it may not preserve all provider-specific features (e.g., reasoning blocks, tool use edge cases). For best results, prefer matching protocols when possible.
 
 ---
 
@@ -60,12 +59,14 @@ Unified Coding Plan Balancer sits between your applications and multiple upstrea
 
 Expose both **OpenAI** and **Anthropic** compatible endpoints simultaneously. Clients must use the endpoint matching their protocol. Each provider can configure separate endpoints and keys for each protocol (`baseUrlOpenai`/`apiKeyOpenai` and `baseUrlAnthropic`/`apiKeyAnthropic`).
 
-| Client (in) | Provider (out) | Handling           |
-| :---------: | :------------: | ------------------ |
-|   OpenAI    |     OpenAI     | Direct passthrough |
-|  Anthropic  |   Anthropic    | Direct passthrough |
+| Client (in) | Provider (out) | Handling                      |
+| :---------: | :------------: | ----------------------------- |
+|   OpenAI    |     OpenAI     | Direct passthrough            |
+|  Anthropic  |   Anthropic    | Direct passthrough            |
+|   OpenAI    |   Anthropic    | 🧪 Cross-protocol translation |
+|  Anthropic  |     OpenAI     | 🧪 Cross-protocol translation |
 
-> ⚠️ **Cross-protocol routing is not supported.** OpenAI clients cannot call Anthropic providers and vice versa.
+> 🧪 **Cross-protocol routing is experimental.** The gateway will automatically translate between OpenAI and Anthropic protocols when the client and provider use different protocols.
 
 ### 🎯 Quota-Aware Smart Routing
 

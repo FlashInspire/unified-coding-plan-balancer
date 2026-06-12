@@ -88,7 +88,7 @@ export function ProviderConfigCard({
             <ChevronRight className="h-3.5 w-3.5" />
           )}
         </button>
-        <span className="text-sm font-medium flex-1 truncate">
+        <span className="text-xs font-medium flex-1 truncate">
           {provider.name}
         </span>
         <span className="text-xs text-muted-foreground font-mono">

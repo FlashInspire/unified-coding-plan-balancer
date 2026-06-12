@@ -139,6 +139,7 @@ export default function LogsUsagePage() {
               <DataTable
                 idKey="id"
                 expandable
+                tableClassName="table-fixed"
                 detailRender={(r) => (
                   <div className="grid grid-cols-3 gap-3 text-xs">
                     <div>
@@ -200,6 +201,7 @@ export default function LogsUsagePage() {
                   {
                     key: "ts",
                     label: "Time",
+                    className: "w-[155px]",
                     render: (r) => (
                       <span className="text-xs text-muted-foreground whitespace-nowrap">
                         {new Date(Number(r.ts)).toLocaleString()}
@@ -209,22 +211,29 @@ export default function LogsUsagePage() {
                   {
                     key: "api_key_name",
                     label: "Key",
+                    className: "w-[110px]",
                     render: (r) => (
-                      <span className="font-mono text-xs">
+                      <span className="font-mono text-xs truncate block">
                         {String(r.api_key_name ?? r.api_key_id ?? "—")}
                       </span>
                     ),
                   },
-                  { key: "model_id", label: "Model" },
+                  {
+                    key: "model_id",
+                    label: "Model",
+                    className: "w-[105px]",
+                  },
                   {
                     key: "provider_name",
                     label: "Provider",
+                    className: "w-[95px]",
                     render: (r) =>
                       String(r.provider_name ?? r.provider_id ?? "—"),
                   },
                   {
                     key: "status",
                     label: "Status",
+                    className: "w-[65px]",
                     render: (r) => {
                       const s = Number(r.status);
                       if (s === 0)
@@ -252,6 +261,7 @@ export default function LogsUsagePage() {
                   {
                     key: "latency_ms",
                     label: "Latency",
+                    className: "w-[65px]",
                     render: (r) => (
                       <span className="text-xs tabular-nums">
                         {Number(r.status) === 0 ? "—" : `${r.latency_ms}ms`}
@@ -259,28 +269,60 @@ export default function LogsUsagePage() {
                     ),
                   },
                   {
-                    key: "token_count",
-                    label: "Tokens (In / Cached / Out)",
+                    key: "input_tokens",
+                    label: "In",
+                    className: "w-[55px] text-right",
                     render: (r) => {
-                      const inp = Number(r.input_tokens ?? 0);
-                      const cached = Number(r.cached_input_tokens ?? 0);
-                      const out = Number(r.output_tokens ?? 0);
-                      const fmt = (n: number) =>
-                        n >= 1_000_000
-                          ? `${(n / 1_000_000).toFixed(1)}M`
-                          : n >= 1_000
-                            ? `${(n / 1_000).toFixed(1)}K`
-                            : String(n);
+                      const n = Number(r.input_tokens ?? 0);
+                      const fmt = (v: number) =>
+                        v >= 1_000_000
+                          ? `${(v / 1_000_000).toFixed(1)}M`
+                          : v >= 1_000
+                            ? `${(v / 1_000).toFixed(1)}K`
+                            : String(v);
                       return (
-                        <span className="text-xs tabular-nums whitespace-nowrap">
-                          {fmt(inp)} / {fmt(cached)} / {fmt(out)}
-                        </span>
+                        <span className="text-xs tabular-nums">{fmt(n)}</span>
+                      );
+                    },
+                  },
+                  {
+                    key: "cached_input_tokens",
+                    label: "Cached",
+                    className: "w-[60px] text-right",
+                    render: (r) => {
+                      const n = Number(r.cached_input_tokens ?? 0);
+                      const fmt = (v: number) =>
+                        v >= 1_000_000
+                          ? `${(v / 1_000_000).toFixed(1)}M`
+                          : v >= 1_000
+                            ? `${(v / 1_000).toFixed(1)}K`
+                            : String(v);
+                      return (
+                        <span className="text-xs tabular-nums">{fmt(n)}</span>
+                      );
+                    },
+                  },
+                  {
+                    key: "output_tokens",
+                    label: "Out",
+                    className: "w-[55px] text-right",
+                    render: (r) => {
+                      const n = Number(r.output_tokens ?? 0);
+                      const fmt = (v: number) =>
+                        v >= 1_000_000
+                          ? `${(v / 1_000_000).toFixed(1)}M`
+                          : v >= 1_000
+                            ? `${(v / 1_000).toFixed(1)}K`
+                            : String(v);
+                      return (
+                        <span className="text-xs tabular-nums">{fmt(n)}</span>
                       );
                     },
                   },
                   {
                     key: "ttft_ms",
                     label: "TTFT",
+                    className: "w-[60px]",
                     render: (r) => (
                       <span className="text-xs tabular-nums">
                         {r.ttft_ms == null ? "—" : `${r.ttft_ms}ms`}
@@ -292,7 +334,7 @@ export default function LogsUsagePage() {
                     label: "User-Agent",
                     render: (r) => (
                       <span
-                        className="text-xs max-w-[160px] truncate inline-block"
+                        className="text-xs truncate block"
                         title={r.user_agent ? String(r.user_agent) : undefined}
                       >
                         {r.user_agent ? String(r.user_agent).slice(0, 40) : "—"}

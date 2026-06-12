@@ -309,7 +309,7 @@ export default function ModelsPage() {
       label: "Provider",
       render: (row: ProviderTableRow) => (
         <div className="flex items-center gap-1.5">
-          <span className="text-sm font-medium">{row.providerName}</span>
+          <span className="text-xs font-medium">{row.providerName}</span>
           {row.quotaRunningOut && (
             <Badge
               variant="secondary"
@@ -407,7 +407,7 @@ export default function ModelsPage() {
       {/* ── Right panel: Detail view ────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto space-y-4">
         {!selectedModel ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+          <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
             Select a model from the list to configure
           </div>
         ) : (

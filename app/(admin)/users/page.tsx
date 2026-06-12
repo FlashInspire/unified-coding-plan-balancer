@@ -5,6 +5,7 @@ import { DataTable } from "../_components/data-table";
 import { FormDialog } from "../_components/form-dialog";
 import { apiFetch } from "../_components/api";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Pencil } from "lucide-react";
 
 interface UserRow {
@@ -137,7 +138,11 @@ export default function UsersPage() {
       )}
 
       {loading ? (
-        <div className="text-muted-foreground">Loading...</div>
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-7 w-full" />
+          ))}
+        </div>
       ) : (
         <DataTable
           idKey="id"

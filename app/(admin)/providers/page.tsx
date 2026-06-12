@@ -247,7 +247,7 @@ export default function ProvidersPage() {
               }`}
               title={p.enabled ? "Enabled" : "Disabled"}
             />
-            <span className="font-medium text-sm">{p.name}</span>
+            <span className="font-medium text-xs">{p.name}</span>
             <span className="text-muted-foreground text-xs font-mono">
               {p.id}
             </span>
@@ -383,7 +383,7 @@ export default function ProvidersPage() {
         {loading ? (
           <div className="space-y-2">
             {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-12 w-full" />
+              <Skeleton key={i} className="h-7 w-full" />
             ))}
           </div>
         ) : data.length === 0 ? (
