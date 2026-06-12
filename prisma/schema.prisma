@@ -179,3 +179,13 @@ model StickyRoute {
   @@id([apiKeyId, modelId])
   @@index([expiresAt])
 }
+
+// -----------------------------------------------------------------------------
+// SystemSetting — key-value store for runtime-configurable settings.
+// DB values override env defaults. See lib/env.ts runtimeConfig.
+// -----------------------------------------------------------------------------
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

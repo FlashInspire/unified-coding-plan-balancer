@@ -38,6 +38,8 @@ export default function LogsUsagePage() {
   // Usage state
   const [usage, setUsage] = useState<UsageBucket[]>([]);
   const [usageLoading, setUsageLoading] = useState(true);
+  const [usagePage, setUsagePage] = useState(0);
+  const [usagePageSize, setUsagePageSize] = useState(50);
 
   // Load logs
   const loadLogs = useCallback(async () => {
@@ -86,6 +88,11 @@ export default function LogsUsagePage() {
   }, [filters, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const usageTotalPages = Math.max(1, Math.ceil(usage.length / usagePageSize));
+  const usageDisplay = usage.slice(
+    usagePage * usagePageSize,
+    (usagePage + 1) * usagePageSize,
+  );
 
   // Extract unique model/provider options from current data
   const modelOptions = [...new Set(logs.map((r) => r.model_id))].sort();
@@ -251,6 +258,47 @@ export default function LogsUsagePage() {
                       </span>
                     ),
                   },
+                  {
+                    key: "token_count",
+                    label: "Tokens (In / Cached / Out)",
+                    render: (r) => {
+                      const inp = Number(r.input_tokens ?? 0);
+                      const cached = Number(r.cached_input_tokens ?? 0);
+                      const out = Number(r.output_tokens ?? 0);
+                      const fmt = (n: number) =>
+                        n >= 1_000_000
+                          ? `${(n / 1_000_000).toFixed(1)}M`
+                          : n >= 1_000
+                            ? `${(n / 1_000).toFixed(1)}K`
+                            : String(n);
+                      return (
+                        <span className="text-xs tabular-nums whitespace-nowrap">
+                          {fmt(inp)} / {fmt(cached)} / {fmt(out)}
+                        </span>
+                      );
+                    },
+                  },
+                  {
+                    key: "ttft_ms",
+                    label: "TTFT",
+                    render: (r) => (
+                      <span className="text-xs tabular-nums">
+                        {r.ttft_ms == null ? "—" : `${r.ttft_ms}ms`}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: "user_agent",
+                    label: "User-Agent",
+                    render: (r) => (
+                      <span
+                        className="text-xs max-w-[160px] truncate inline-block"
+                        title={r.user_agent ? String(r.user_agent) : undefined}
+                      >
+                        {r.user_agent ? String(r.user_agent).slice(0, 40) : "—"}
+                      </span>
+                    ),
+                  },
                 ]}
               />
 
@@ -333,7 +381,7 @@ export default function LogsUsagePage() {
           )}
         </TabsContent>
 
-        <TabsContent value="usage">
+        <TabsContent value="usage" className="space-y-3">
           {usageLoading ? (
             <div className="space-y-2">
               {Array.from({ length: 8 }).map((_, i) => (
@@ -341,58 +389,147 @@ export default function LogsUsagePage() {
               ))}
             </div>
           ) : (
-            <DataTable
-              idKey="minute"
-              data={usage as unknown as Record<string, unknown>[]}
-              columns={[
-                {
-                  key: "minute",
-                  label: "Minute",
-                  render: (r) => (
-                    <span className="text-xs whitespace-nowrap">
-                      {new Date(Number(r.minute) * 60_000).toLocaleString()}
-                    </span>
-                  ),
-                },
-                { key: "model_id", label: "Model" },
-                { key: "provider_id", label: "Provider" },
-                { key: "requests", label: "Reqs" },
-                { key: "requests_ok", label: "OK" },
-                { key: "requests_err", label: "Err" },
-                {
-                  key: "input_tokens",
-                  label: "In Tok",
-                  className: "text-right",
-                },
-                {
-                  key: "output_tokens",
-                  label: "Out Tok",
-                  className: "text-right",
-                },
-                {
-                  key: "avg_ttft_ms",
-                  label: "Avg TTFT",
-                  render: (r) => (
-                    <span className="tabular-nums">
-                      {r.avg_ttft_ms == null
-                        ? "—"
-                        : `${Number(r.avg_ttft_ms).toFixed(0)}ms`}
-                    </span>
-                  ),
-                },
-                {
-                  key: "avg_tps_out",
-                  label: "Avg TPS",
-                  render: (r) => (
-                    <span className="tabular-nums">
-                      {r.avg_tps_out == null
-                        ? "—"
-                        : `${Number(r.avg_tps_out).toFixed(1)}`}
-                    </span>
-                  ),
-                },
-              ]}
-            />
+            <>
+              <div className="text-xs text-muted-foreground">
+                Showing {usagePage * usagePageSize + 1}-
+                {Math.min((usagePage + 1) * usagePageSize, usage.length)} of{" "}
+                {usage.length} entries
+              </div>
+              <DataTable
+                idKey="minute"
+                data={usageDisplay as unknown as Record<string, unknown>[]}
+                columns={[
+                  {
+                    key: "minute",
+                    label: "Minute",
+                    render: (r) => (
+                      <span className="text-xs whitespace-nowrap">
+                        {new Date(Number(r.minute) * 60_000).toLocaleString()}
+                      </span>
+                    ),
+                  },
+                  { key: "model_id", label: "Model" },
+                  { key: "provider_id", label: "Provider" },
+                  { key: "requests", label: "Reqs" },
+                  { key: "requests_ok", label: "OK" },
+                  { key: "requests_err", label: "Err" },
+                  {
+                    key: "input_tokens",
+                    label: "In Tok",
+                    className: "text-right",
+                  },
+                  {
+                    key: "output_tokens",
+                    label: "Out Tok",
+                    className: "text-right",
+                  },
+                  {
+                    key: "avg_ttft_ms",
+                    label: "Avg TTFT",
+                    render: (r) => (
+                      <span className="tabular-nums">
+                        {r.avg_ttft_ms == null
+                          ? "—"
+                          : `${Number(r.avg_ttft_ms).toFixed(0)}ms`}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: "avg_tps_out",
+                    label: "Avg TPS",
+                    render: (r) => (
+                      <span className="tabular-nums">
+                        {r.avg_tps_out == null
+                          ? "—"
+                          : `${Number(r.avg_tps_out).toFixed(1)}`}
+                      </span>
+                    ),
+                  },
+                ]}
+              />
+              {/* Usage Pagination */}
+              <div className="flex items-center justify-between pt-1">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>Per page:</span>
+                  <select
+                    value={usagePageSize}
+                    onChange={(e) => {
+                      setUsagePageSize(Number(e.target.value));
+                      setUsagePage(0);
+                    }}
+                    className="h-7 rounded border border-input bg-background px-1.5 text-xs"
+                  >
+                    {PAGE_SIZES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setUsagePage((p) => Math.max(0, p - 1));
+                        }}
+                        className={
+                          usagePage === 0
+                            ? "pointer-events-none opacity-50"
+                            : ""
+                        }
+                      />
+                    </PaginationItem>
+                    {Array.from({
+                      length: Math.min(usageTotalPages, 7),
+                    }).map((_, i) => {
+                      let pageNum: number;
+                      if (usageTotalPages <= 7) {
+                        pageNum = i;
+                      } else if (usagePage < 4) {
+                        pageNum = i;
+                      } else if (usagePage > usageTotalPages - 5) {
+                        pageNum = usageTotalPages - 7 + i;
+                      } else {
+                        pageNum = usagePage - 3 + i;
+                      }
+                      return (
+                        <PaginationItem key={pageNum}>
+                          <PaginationLink
+                            href="#"
+                            isActive={pageNum === usagePage}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setUsagePage(pageNum);
+                            }}
+                          >
+                            {pageNum + 1}
+                          </PaginationLink>
+                        </PaginationItem>
+                      );
+                    })}
+                    <PaginationItem>
+                      <PaginationNext
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setUsagePage((p) =>
+                            Math.min(usageTotalPages - 1, p + 1),
+                          );
+                        }}
+                        className={
+                          usagePage >= usageTotalPages - 1
+                            ? "pointer-events-none opacity-50"
+                            : ""
+                        }
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              </div>
+            </>
           )}
         </TabsContent>
       </Tabs>

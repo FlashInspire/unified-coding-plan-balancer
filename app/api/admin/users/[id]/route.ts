@@ -4,7 +4,8 @@ import { requireAdmin } from "../../_lib/guard";
 import { adminUserRepo } from "@/lib/repositories/adminUserRepo";
 
 const patchSchema = z.object({
-  mustChangePassword: z.boolean(),
+  mustChangePassword: z.boolean().optional(),
+  password: z.string().min(6).optional(),
 });
 
 export async function PATCH(
@@ -23,7 +24,14 @@ export async function PATCH(
 
   try {
     const body = patchSchema.parse(await req.json());
-    await adminUserRepo.setMustChangePassword(id, body.mustChangePassword);
+
+    if (body.password) {
+      await adminUserRepo.updatePassword(id, body.password);
+    }
+    if (body.mustChangePassword != null) {
+      await adminUserRepo.setMustChangePassword(id, body.mustChangePassword);
+    }
+
     return Response.json({ ok: true });
   } catch (e) {
     return Response.json(

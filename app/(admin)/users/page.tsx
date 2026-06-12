@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { DataTable } from "../_components/data-table";
 import { FormDialog } from "../_components/form-dialog";
 import { apiFetch } from "../_components/api";
+import { Badge } from "@/components/ui/badge";
+import { Pencil } from "lucide-react";
 
 interface UserRow {
   id: string;
@@ -16,6 +18,7 @@ export default function UsersPage() {
   const [data, setData] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editRow, setEditRow] = useState<UserRow | null>(null);
 
   async function load() {
     setLoading(true);
@@ -71,6 +74,62 @@ export default function UsersPage() {
         />
       </div>
 
+      {/* Edit modal */}
+      <FormDialog
+        title={`Edit User: ${editRow?.username ?? ""}`}
+        fields={[
+          {
+            name: "username",
+            label: "Username",
+            type: "text" as const,
+            readOnly: true,
+          },
+          {
+            name: "password",
+            label: "New Password (leave blank to keep current)",
+            type: "text" as const,
+            placeholder: "••••••",
+          },
+          {
+            name: "mustChangePassword",
+            label: "Must Change Password",
+            type: "boolean" as const,
+          },
+        ]}
+        open={editRow != null}
+        onOpenChange={(o) => {
+          if (!o) setEditRow(null);
+        }}
+        initialValues={
+          editRow
+            ? {
+                username: editRow.username,
+                mustChangePassword: editRow.mustChangePassword,
+              }
+            : undefined
+        }
+        submitLabel="Save"
+        onSubmit={async (v) => {
+          setError(null);
+          try {
+            const body: Record<string, unknown> = {};
+            if (v.password) body.password = v.password;
+            if (v.mustChangePassword != null)
+              body.mustChangePassword = v.mustChangePassword;
+            await apiFetch(`/api/admin/users/${editRow!.id}`, {
+              method: "PATCH",
+              body: JSON.stringify(body),
+            });
+            setEditRow(null);
+            await load();
+          } catch (err) {
+            setError(
+              err instanceof Error ? err.message : "Failed to update user",
+            );
+          }
+        }}
+      />
+
       {error && (
         <div className="rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700">
           {error}
@@ -90,39 +149,17 @@ export default function UsersPage() {
               label: "Must Change Password",
               render: (r) => {
                 const row = r as unknown as UserRow;
-                return (
-                  <button
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      setError(null);
-                      try {
-                        await apiFetch(`/api/admin/users/${row.id}`, {
-                          method: "PATCH",
-                          body: JSON.stringify({
-                            mustChangePassword: !row.mustChangePassword,
-                          }),
-                        });
-                        await load();
-                      } catch (err) {
-                        setError(
-                          err instanceof Error
-                            ? err.message
-                            : "Failed to update user",
-                        );
-                      }
-                    }}
-                    className={`inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                      row.mustChangePassword ? "bg-amber-500" : "bg-gray-300"
-                    }`}
+                return row.mustChangePassword ? (
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] bg-amber-100 text-amber-800"
                   >
-                    <span
-                      className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
-                        row.mustChangePassword
-                          ? "translate-x-4"
-                          : "translate-x-0.5"
-                      }`}
-                    />
-                  </button>
+                    Yes
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px]">
+                    No
+                  </Badge>
                 );
               },
             },
@@ -133,6 +170,21 @@ export default function UsersPage() {
                 new Date(r.createdAt as string).toLocaleDateString(),
             },
           ]}
+          actions={(row) => {
+            const u = row as unknown as UserRow;
+            return (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditRow(u);
+                }}
+                className="inline-flex items-center justify-center h-7 w-7 rounded hover:bg-accent"
+                title="Edit"
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+            );
+          }}
           onDelete={async (id) => {
             setError(null);
             try {
