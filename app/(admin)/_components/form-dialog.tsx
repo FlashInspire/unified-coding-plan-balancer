@@ -148,7 +148,7 @@ export function FormDialog({
         <form onSubmit={handleSubmit} className="space-y-3">
           {renderFormEntries(fields, initialValues)}
           {error && (
-            <div className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+            <div className="text-xs text-destructive rounded-md bg-destructive/10 px-3 py-2">
               {error}
             </div>
           )}
@@ -178,7 +178,7 @@ export function FormDialog({
 function renderField(f: FieldDef, iv?: Record<string, unknown>) {
   if (f.readOnly) {
     return (
-      <div className="text-sm text-muted-foreground py-1">
+      <div className="text-xs text-muted-foreground py-1">
         {iv?.[f.name] != null ? String(iv[f.name]) : "—"}
       </div>
     );
@@ -199,7 +199,7 @@ function renderField(f: FieldDef, iv?: Record<string, unknown>) {
         name={f.name}
         required={f.required}
         defaultValue={String(iv?.[f.name] ?? f.defaultValue ?? "")}
-        className="w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
       >
         <option value="">--</option>
         {f.options?.map((o) => {
@@ -224,7 +224,7 @@ function renderField(f: FieldDef, iv?: Record<string, unknown>) {
             ? JSON.stringify(iv[f.name], null, 2)
             : (f.defaultValue ?? "{}"),
         )}
-        className="w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm font-mono focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs font-mono focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
       />
     );
   }

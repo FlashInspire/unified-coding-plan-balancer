@@ -65,16 +65,16 @@ function ChangePasswordForm() {
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="w-full max-w-sm space-y-6 rounded-xl border p-6 shadow-sm">
         <div>
-          <h1 className="text-2xl font-bold">Change Password</h1>
+          <h1 className="text-sm font-bold">Change Password</h1>
           {isForced && (
-            <p className="text-sm text-amber-600 mt-1">
+            <p className="text-xs text-amber-600 mt-1">
               You must change your password before continuing.
             </p>
           )}
         </div>
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
-            <label className="text-sm font-medium" htmlFor="currentPassword">
+            <label className="text-xs font-medium" htmlFor="currentPassword">
               Current Password
             </label>
             <input
@@ -88,7 +88,7 @@ function ChangePasswordForm() {
             />
           </div>
           <div>
-            <label className="text-sm font-medium" htmlFor="newPassword">
+            <label className="text-xs font-medium" htmlFor="newPassword">
               New Password
             </label>
             <input
@@ -103,7 +103,7 @@ function ChangePasswordForm() {
             />
           </div>
           <div>
-            <label className="text-sm font-medium" htmlFor="confirmPassword">
+            <label className="text-xs font-medium" htmlFor="confirmPassword">
               Confirm New Password
             </label>
             <input
@@ -117,7 +117,7 @@ function ChangePasswordForm() {
               className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
             />
           </div>
-          {error && <div className="text-sm text-red-600">{error}</div>}
+          {error && <div className="text-xs text-red-600">{error}</div>}
           {success && (
             <div className="text-sm text-green-600">
               Password changed! Redirecting…

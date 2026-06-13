@@ -50,12 +50,12 @@ function LoginForm() {
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="w-full max-w-sm space-y-6 rounded-xl border p-6 shadow-sm">
         <div>
-          <h1 className="text-2xl font-bold">Unified Coding Plan Balancer</h1>
-          <p className="text-sm text-muted-foreground">Admin sign in</p>
+          <h1 className="text-sm font-bold">Unified Coding Plan Balancer</h1>
+          <p className="text-xs text-muted-foreground">Admin sign in</p>
         </div>
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
-            <label className="text-sm font-medium" htmlFor="username">
+            <label className="text-xs font-medium" htmlFor="username">
               Username
             </label>
             <input
@@ -69,7 +69,7 @@ function LoginForm() {
             />
           </div>
           <div>
-            <label className="text-sm font-medium" htmlFor="password">
+            <label className="text-xs font-medium" htmlFor="password">
               Password
             </label>
             <input
@@ -82,7 +82,7 @@ function LoginForm() {
               className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
             />
           </div>
-          {error && <div className="text-sm text-red-600">{error}</div>}
+          {error && <div className="text-xs text-red-600">{error}</div>}
           <button
             type="submit"
             disabled={loading}

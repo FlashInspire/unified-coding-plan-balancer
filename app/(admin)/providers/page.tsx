@@ -342,7 +342,7 @@ export default function ProvidersPage() {
     <TooltipProvider>
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">{t("page.providers.title")}</h1>
+          <h1 className="text-sm font-semibold">{t("page.providers.title")}</h1>
           <FormDialog
             title={t("providers.dialog.createTitle")}
             triggerLabel={t("providers.dialog.createTrigger")}

@@ -80,7 +80,7 @@ export default function ApiKeysPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{t("page.apiKeys.title")}</h1>
+        <h1 className="text-sm font-semibold">{t("page.apiKeys.title")}</h1>
         <FormDialog
           title={t("apiKeys.dialog.createTitle")}
           triggerLabel={t("apiKeys.dialog.createTrigger")}

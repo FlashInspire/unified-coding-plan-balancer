@@ -39,7 +39,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
       <div className="flex h-14 items-center px-5 border-b border-sidebar-border">
         <Link
           href="/"
-          className="font-bold text-lg tracking-tight text-sidebar-foreground"
+          className="font-bold text-sm tracking-tight text-sidebar-foreground"
           onClick={onNavigate}
         >
           {t("sidebar.logo")}

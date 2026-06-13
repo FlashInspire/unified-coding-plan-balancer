@@ -69,8 +69,8 @@ export function ModelList({
                       {m.id}
                     </div>
                   </div>
-                  <Badge variant="secondary" className="text-[10px] shrink-0">
-                    {providerCounts[m.id] ?? 0}p
+                  <Badge variant="secondary" className="text-xs shrink-0">
+                    {providerCounts[m.id] ?? 0}
                   </Badge>
                 </button>
               ))}

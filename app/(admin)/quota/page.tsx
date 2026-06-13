@@ -35,7 +35,7 @@ export default function QuotaPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">{t("page.quota.title")}</h1>
+      <h1 className="text-sm font-semibold">{t("page.quota.title")}</h1>
       {loading && data.length === 0 ? (
         <div className="text-muted-foreground text-xs">{t("common.loading")}</div>
       ) : (

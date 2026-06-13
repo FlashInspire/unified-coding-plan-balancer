@@ -117,8 +117,8 @@ export default function AdminHome() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold">{t("page.dashboard.title")}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h1 className="text-sm font-semibold">{t("page.dashboard.title")}</h1>
+        <p className="mt-1 text-xs text-muted-foreground">
           {t("dashboard.welcome")}
         </p>
       </div>
