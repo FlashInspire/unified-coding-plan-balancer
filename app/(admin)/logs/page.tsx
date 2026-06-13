@@ -16,10 +16,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useT } from "../_components/i18n-provider";
 
 const PAGE_SIZES = [25, 50, 100] as const;
 
 export default function LogsUsagePage() {
+  const t = useT();
   const [tab, setTab] = useState<"logs" | "usage">("logs");
 
   // Logs state
@@ -105,13 +107,13 @@ export default function LogsUsagePage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Logs & Usage</h1>
+        <h1 className="text-xl font-semibold">{t("page.logs.title")}</h1>
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as "logs" | "usage")}>
         <TabsList variant="line">
-          <TabsTrigger value="logs">Request Logs</TabsTrigger>
-          <TabsTrigger value="usage">Aggregated Usage</TabsTrigger>
+          <TabsTrigger value="logs">{t("logs.tabs.requestLogs")}</TabsTrigger>
+          <TabsTrigger value="usage">{t("logs.tabs.aggregatedUsage")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="logs" className="space-y-3">
@@ -143,52 +145,52 @@ export default function LogsUsagePage() {
                 detailRender={(r) => (
                   <div className="grid grid-cols-3 gap-3 text-xs">
                     <div>
-                      <span className="text-muted-foreground">Stream: </span>
+                      <span className="text-muted-foreground">{t("logs.detail.stream")} </span>
                       {r.stream ? "✓" : "✗"}
                     </div>
                     <div>
-                      <span className="text-muted-foreground">TTFT: </span>
+                      <span className="text-muted-foreground">{t("logs.detail.ttft")} </span>
                       {r.ttft_ms == null ? "—" : `${r.ttft_ms}ms`}
                     </div>
                     <div>
-                      <span className="text-muted-foreground">In Tokens: </span>
+                      <span className="text-muted-foreground">{t("logs.detail.inTokens")} </span>
                       {String(r.input_tokens ?? "")}
                     </div>
                     <div>
                       <span className="text-muted-foreground">
-                        Out Tokens:{" "}
+                        {t("logs.detail.outTokens")}{" "}
                       </span>
                       {String(r.output_tokens ?? "")}
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Out TPS: </span>
+                      <span className="text-muted-foreground">{t("logs.detail.outTps")} </span>
                       {r.tps_out == null
                         ? "—"
                         : `${Number(r.tps_out).toFixed(1)}`}
                     </div>
                     <div>
                       <span className="text-muted-foreground">
-                        User-Agent:{" "}
+                        {t("logs.detail.userAgent")}{" "}
                       </span>
                       {r.user_agent ? String(r.user_agent).slice(0, 60) : "—"}
                     </div>
                     <div>
                       <span className="text-muted-foreground">
-                        Real Model:{" "}
+                        {t("logs.detail.realModel")}{" "}
                       </span>
                       {r.real_model_id ? String(r.real_model_id) : "—"}
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Cached In: </span>
+                      <span className="text-muted-foreground">{t("logs.detail.cachedIn")} </span>
                       {String(r.cached_input_tokens ?? "")}
                     </div>
                     <div>
-                      <span className="text-muted-foreground">IP: </span>
+                      <span className="text-muted-foreground">{t("logs.detail.ip")} </span>
                       {r.ip ? String(r.ip) : "—"}
                     </div>
                     {!!r.error_code && (
                       <div className="col-span-3">
-                        <span className="text-muted-foreground">Error: </span>
+                        <span className="text-muted-foreground">{t("logs.detail.error")} </span>
                         <span className="text-destructive">
                           {String(r.error_code)}
                         </span>
@@ -200,7 +202,7 @@ export default function LogsUsagePage() {
                 columns={[
                   {
                     key: "ts",
-                    label: "Time",
+                    label: t("logs.table.time"),
                     className: "w-[155px]",
                     render: (r) => (
                       <span className="text-xs text-muted-foreground whitespace-nowrap">
@@ -210,7 +212,7 @@ export default function LogsUsagePage() {
                   },
                   {
                     key: "api_key_name",
-                    label: "Key",
+                    label: t("logs.table.key"),
                     className: "w-[180px]",
                     render: (r) => (
                       <span className="font-mono text-xs truncate block">
@@ -220,7 +222,7 @@ export default function LogsUsagePage() {
                   },
                   {
                     key: "model_id",
-                    label: "Model",
+                    label: t("logs.table.model"),
                     className: "w-[130px]",
                   },
                   {
@@ -232,7 +234,7 @@ export default function LogsUsagePage() {
                   },
                   {
                     key: "status",
-                    label: "Status",
+                    label: t("logs.table.status"),
                     className: "w-[70px]",
                     render: (r) => {
                       const s = Number(r.status);
@@ -260,7 +262,7 @@ export default function LogsUsagePage() {
                   },
                   {
                     key: "latency_ms",
-                    label: "Latency",
+                    label: t("logs.table.latency"),
                     className: "w-[75px]",
                     render: (r) => {
                       const fmtDuration = (ms: number) => {
@@ -279,7 +281,7 @@ export default function LogsUsagePage() {
                   },
                   {
                     key: "input_tokens",
-                    label: "In",
+                    label: t("logs.table.inTokens"),
                     className: "w-[55px] text-right",
                     render: (r) => {
                       const n = Number(r.input_tokens ?? 0);
@@ -296,7 +298,7 @@ export default function LogsUsagePage() {
                   },
                   {
                     key: "cached_input_tokens",
-                    label: "Cached",
+                    label: t("logs.table.cachedTokens"),
                     className: "w-[60px] text-right",
                     render: (r) => {
                       const n = Number(r.cached_input_tokens ?? 0);
@@ -313,7 +315,7 @@ export default function LogsUsagePage() {
                   },
                   {
                     key: "output_tokens",
-                    label: "Out",
+                    label: t("logs.table.outTokens"),
                     className: "w-[55px] text-right",
                     render: (r) => {
                       const n = Number(r.output_tokens ?? 0);
@@ -330,7 +332,7 @@ export default function LogsUsagePage() {
                   },
                   {
                     key: "ttft_ms",
-                    label: "TTFT",
+                    label: t("logs.table.ttft"),
                     className: "w-[70px]",
                     render: (r) => {
                       const fmtDuration = (ms: number) => {

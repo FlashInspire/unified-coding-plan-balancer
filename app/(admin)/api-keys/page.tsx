@@ -5,6 +5,7 @@ import { DataTable } from "../_components/data-table";
 import { FormDialog } from "../_components/form-dialog";
 import { CircularProgress } from "../_components/circular-progress";
 import { apiFetch } from "../_components/api";
+import { useT } from "../_components/i18n-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -58,6 +59,7 @@ function quotaTooltip(k: ApiKeyRow): string {
 }
 
 export default function ApiKeysPage() {
+  const t = useT();
   const [data, setData] = useState<ApiKeyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [created, setCreated] = useState<CreatedApiKey | null>(null);
@@ -78,27 +80,27 @@ export default function ApiKeysPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">API Keys</h1>
+        <h1 className="text-xl font-semibold">{t("page.apiKeys.title")}</h1>
         <FormDialog
-          title="New API Key"
-          triggerLabel="+ New Key"
+          title={t("apiKeys.dialog.createTitle")}
+          triggerLabel={t("apiKeys.dialog.createTrigger")}
           fields={[
-            { name: "name", label: "Name", type: "text", required: true },
+            { name: "name", label: t("apiKeys.form.name"), type: "text", required: true },
             {
               name: "rollingQuota",
-              label: "Rolling Token Quota (5h)",
+              label: t("apiKeys.form.rollingQuota"),
               type: "number",
               required: false,
             },
             {
               name: "weekQuota",
-              label: "Weekly Token Quota (Mon-Sun)",
+              label: t("apiKeys.form.weekQuota"),
               type: "number",
               required: false,
             },
             {
               name: "monthQuota",
-              label: "Monthly Token Quota",
+              label: t("apiKeys.form.monthQuota"),
               type: "number",
               required: false,
             },
@@ -228,8 +230,8 @@ export default function ApiKeysPage() {
           columns={[
             {
               key: "name",
-              label: "Name",
-              className: "w-[220px]",
+              label: t("apiKeys.table.name"),
+              className: "w-[140px]",
               render: (r) => {
                 const k = r as unknown as ApiKeyRow;
                 return (
@@ -241,7 +243,7 @@ export default function ApiKeysPage() {
             },
             {
               key: "quota",
-              label: "Quota",
+              label: t("apiKeys.table.quota"),
               className: "w-[80px]",
               render: (r) => {
                 const k = r as unknown as ApiKeyRow;
@@ -261,7 +263,7 @@ export default function ApiKeysPage() {
             },
             {
               key: "lastUsedAt",
-              label: "Last Used",
+              label: t("apiKeys.table.lastUsed"),
               className: "w-[145px]",
               render: (r) => {
                 const k = r as unknown as ApiKeyRow;
@@ -291,7 +293,7 @@ export default function ApiKeysPage() {
                     setEditRow(k);
                   }}
                   className="inline-flex items-center justify-center h-7 w-7 rounded hover:bg-accent"
-                  title="Edit"
+                  title={t("apiKeys.action.edit")}
                 >
                   <Pencil className="h-3 w-3" />
                 </button>
@@ -305,7 +307,7 @@ export default function ApiKeysPage() {
                     await load();
                   }}
                   className="inline-flex items-center justify-center h-7 w-7 rounded hover:bg-accent"
-                  title={k.enabled ? "Disable" : "Enable"}
+                  title={k.enabled ? t("apiKeys.action.disable") : t("apiKeys.action.enable")}
                 >
                   <Power
                     className={`h-3 w-3 ${
@@ -318,7 +320,7 @@ export default function ApiKeysPage() {
           }}
           onDelete={async (id) => {
             const k = data.find((d) => d.id === id);
-            if (!confirm(`Delete API key "${k?.name ?? id}"?`)) return;
+            if (!confirm(t("apiKeys.confirmDelete", { name: k?.name ?? id }))) return;
             await apiFetch(`/api/admin/api-keys/${id}`, { method: "DELETE" });
             await load();
           }}
@@ -332,6 +334,7 @@ export default function ApiKeysPage() {
 // Expanded row: Recent Call Logs for a specific API key
 // ---------------------------------------------------------------------------
 function KeyCallLogs({ apiKeyId }: { apiKeyId: string }) {
+  const t = useT();
   const [logs, setLogs] = useState<RecentLogRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -354,7 +357,7 @@ function KeyCallLogs({ apiKeyId }: { apiKeyId: string }) {
   }, [loadLogs]);
 
   if (loading)
-    return <div className="text-xs text-muted-foreground">Loading logs…</div>;
+    return <div className="text-xs text-muted-foreground">{t("apiKeys.logs.loading")}</div>;
   if (logs.length === 0)
     return (
       <div className="text-xs text-muted-foreground italic">
@@ -366,40 +369,40 @@ function KeyCallLogs({ apiKeyId }: { apiKeyId: string }) {
     <div>
       <div className="flex items-center justify-between mb-2">
         <span className="font-medium text-xs uppercase tracking-wide text-muted-foreground">
-          Recent Call Logs (last 50)
+          {t("apiKeys.logs.heading")}
         </span>
         <button
           className="text-xs text-muted-foreground hover:underline"
           onClick={loadLogs}
         >
-          Refresh
+          {t("apiKeys.logs.refresh")}
         </button>
       </div>
       <div className="overflow-x-auto rounded-md border">
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b bg-muted/50">
-              <th className="px-2 py-1.5 text-left font-medium">Time</th>
-              <th className="px-2 py-1.5 text-left font-medium">Model</th>
-              <th className="px-2 py-1.5 text-left font-medium">Provider</th>
-              <th className="px-2 py-1.5 text-left font-medium">Status</th>
-              <th className="px-2 py-1.5 text-left font-medium">Latency</th>
-              <th className="px-2 py-1.5 text-left font-medium">In Tokens</th>
-              <th className="px-2 py-1.5 text-left font-medium">Out Tokens</th>
-              <th className="px-2 py-1.5 text-left font-medium">TTFT</th>
+              <th className="px-2 py-2 text-left font-medium">{t("apiKeys.logs.time")}</th>
+              <th className="px-2 py-2 text-left font-medium">{t("apiKeys.logs.model")}</th>
+              <th className="px-2 py-2 text-left font-medium">{t("apiKeys.logs.provider")}</th>
+              <th className="px-2 py-2 text-left font-medium">{t("apiKeys.logs.status")}</th>
+              <th className="px-2 py-2 text-left font-medium">{t("apiKeys.logs.latency")}</th>
+              <th className="px-2 py-2 text-left font-medium">{t("apiKeys.logs.inTokens")}</th>
+              <th className="px-2 py-2 text-left font-medium">{t("apiKeys.logs.outTokens")}</th>
+              <th className="px-2 py-2 text-left font-medium">{t("apiKeys.logs.ttft")}</th>
             </tr>
           </thead>
           <tbody>
             {logs.map((r) => (
               <tr key={r.id} className="border-b last:border-0">
-                <td className="px-2 py-1 whitespace-nowrap">
+                <td className="px-2 py-2 whitespace-nowrap">
                   {new Date(r.ts).toLocaleString()}
                 </td>
-                <td className="px-2 py-1">{r.model_id}</td>
-                <td className="px-2 py-1">
+                <td className="px-2 py-2">{r.model_id}</td>
+                <td className="px-2 py-2">
                   {r.provider_name ?? r.provider_id ?? "—"}
                 </td>
-                <td className="px-2 py-1">
+                <td className="px-2 py-2">
                   {r.status === 0 ? (
                     <Badge variant="secondary" className="text-[10px]">
                       In-flight
@@ -417,12 +420,12 @@ function KeyCallLogs({ apiKeyId }: { apiKeyId: string }) {
                     </Badge>
                   )}
                 </td>
-                <td className="px-2 py-1">
+                <td className="px-2 py-2">
                   {r.status === 0 ? "—" : `${r.latency_ms}ms`}
                 </td>
-                <td className="px-2 py-1">{r.input_tokens ?? "—"}</td>
-                <td className="px-2 py-1">{r.output_tokens ?? "—"}</td>
-                <td className="px-2 py-1">
+                <td className="px-2 py-2">{r.input_tokens ?? "—"}</td>
+                <td className="px-2 py-2">{r.output_tokens ?? "—"}</td>
+                <td className="px-2 py-2">
                   {r.ttft_ms == null ? "—" : `${r.ttft_ms}ms`}
                 </td>
               </tr>

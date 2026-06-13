@@ -10,6 +10,8 @@ declare module "next-auth" {
       id: string;
       name?: string | null;
       mustChangePassword?: boolean;
+      language?: string;
+      theme?: string;
     };
   }
 }

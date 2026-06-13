@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { DataTable } from "../_components/data-table";
 import { FormDialog } from "../_components/form-dialog";
 import { apiFetch } from "../_components/api";
+import { useT } from "../_components/i18n-provider";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pencil } from "lucide-react";
@@ -17,6 +18,7 @@ interface UserRow {
 }
 
 export default function UsersPage() {
+  const t = useT();
   const [data, setData] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,20 +43,20 @@ export default function UsersPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Users</h1>
+        <h1 className="text-xl font-semibold">{t("page.users.title")}</h1>
         <FormDialog
-          title="Add User"
-          triggerLabel="+ Add User"
+          title={t("users.dialog.addTitle")}
+          triggerLabel={t("users.dialog.addTrigger")}
           fields={[
             {
               name: "username",
-              label: "Username",
+              label: t("users.form.username"),
               type: "text" as const,
               required: true,
             },
             {
               name: "password",
-              label: "Password",
+              label: t("users.form.password"),
               type: "text" as const,
               required: true,
             },
@@ -78,7 +80,7 @@ export default function UsersPage() {
 
       {/* Edit modal */}
       <FormDialog
-        title={`Edit User: ${editRow?.username ?? ""}`}
+        title={`${t("users.dialog.editTitle")}: ${editRow?.username ?? ""}`}
         fields={[
           {
             name: "username",
@@ -150,10 +152,10 @@ export default function UsersPage() {
           tableClassName="table-fixed"
           data={data as unknown as Record<string, unknown>[]}
           columns={[
-            { key: "username", label: "Username", className: "w-[160px]" },
+            { key: "username", label: t("users.table.username"), className: "w-[160px]" },
             {
               key: "mustChangePassword",
-              label: "Must Change Password",
+              label: t("users.table.status"),
               className: "w-[150px]",
               render: (r) => {
                 const row = r as unknown as UserRow;
@@ -173,7 +175,7 @@ export default function UsersPage() {
             },
             {
               key: "lastSignInAt",
-              label: "Last Login",
+              label: t("users.table.lastLogin"),
               className: "w-[150px]",
               render: (r) => {
                 const row = r as unknown as UserRow;
@@ -188,7 +190,7 @@ export default function UsersPage() {
             },
             {
               key: "createdAt",
-              label: "Created",
+              label: t("users.table.created"),
               className: "w-[120px]",
               render: (r) =>
                 new Date(r.createdAt as string).toLocaleDateString(),

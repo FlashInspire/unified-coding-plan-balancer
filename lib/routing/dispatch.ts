@@ -660,6 +660,9 @@ function wrapStream(
             }
           }
           if (chunk.delta) streamOutputTokens++;
+          // Adopt usage from the final chunk. Adapters now always yield a
+          // concrete object (even {0,0,0}) so this reliably captures
+          // provider-reported token counts for every stream.
           if (chunk.usage) usage = chunk.usage;
           if (chunk.finishReason) finishReason = chunk.finishReason;
           yield chunk;

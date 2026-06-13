@@ -56,11 +56,24 @@ export const authConfig: NextAuthConfig = {
         token.mustChangePassword =
           (user as { mustChangePassword?: boolean }).mustChangePassword ??
           false;
+        // Carry preferences from the user object (set by Credentials provider).
+        token.language = (user as { language?: string }).language ?? "en";
+        token.theme = (user as { theme?: string }).theme ?? "system";
       }
       if (trigger === "update" && session) {
-        const s = session as { mustChangePassword?: boolean };
+        const s = session as {
+          mustChangePassword?: boolean;
+          language?: string;
+          theme?: string;
+        };
         if (typeof s.mustChangePassword === "boolean") {
           token.mustChangePassword = s.mustChangePassword;
+        }
+        if (typeof s.language === "string") {
+          token.language = s.language;
+        }
+        if (typeof s.theme === "string") {
+          token.theme = s.theme;
         }
       }
       return token;
@@ -69,6 +82,8 @@ export const authConfig: NextAuthConfig = {
       if (session.user && token.id) {
         session.user.id = token.id as string;
         session.user.mustChangePassword = token.mustChangePassword as boolean;
+        session.user.language = (token.language as string) ?? "en";
+        session.user.theme = (token.theme as string) ?? "system";
       }
       return session;
     },

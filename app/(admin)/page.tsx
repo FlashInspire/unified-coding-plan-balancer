@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "./_components/api";
+import { useT } from "./_components/i18n-provider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -57,51 +58,6 @@ interface DashboardData {
   tokenCounts: TokenCount[];
 }
 
-const CARDS = [
-  {
-    href: "/providers",
-    label: "Providers",
-    icon: Server,
-    desc: "Manage upstream providers",
-  },
-  {
-    href: "/models",
-    label: "Models",
-    icon: Layers,
-    desc: "Configure models & provider mappings",
-  },
-  {
-    href: "/api-keys",
-    label: "API Keys",
-    icon: Key,
-    desc: "Manage bearer tokens",
-  },
-  {
-    href: "/quota",
-    label: "Quota",
-    icon: BarChart3,
-    desc: "Provider quota snapshots",
-  },
-  {
-    href: "/logs",
-    label: "Logs & Usage",
-    icon: ScrollText,
-    desc: "Request logs & aggregated usage",
-  },
-  {
-    href: "/users",
-    label: "Users",
-    icon: Users,
-    desc: "Admin user management",
-  },
-  {
-    href: "/settings",
-    label: "Settings",
-    icon: Settings,
-    desc: "Account settings",
-  },
-];
-
 const CHART_COLORS = [
   "hsl(var(--primary))",
   "#6366f1",
@@ -131,6 +87,7 @@ function fmtTokens(n: number): string {
 }
 
 export default function AdminHome() {
+  const t = useT();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>("week");
@@ -160,9 +117,9 @@ export default function AdminHome() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold">Dashboard</h1>
+        <h1 className="text-xl font-semibold">{t("page.dashboard.title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Welcome to Unified Coding Plan Balancer admin panel.
+          {t("dashboard.welcome")}
         </p>
       </div>
 
@@ -176,25 +133,25 @@ export default function AdminHome() {
       ) : data && rc ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <StatCard
-            label="Requests (1h)"
+            label={t("dashboard.stats.requests1h")}
             value={rc.hour}
             pct={(rc.hour / maxRequests) * 100}
             color="hsl(var(--primary))"
           />
           <StatCard
-            label="Requests (1d)"
+            label={t("dashboard.stats.requests1d")}
             value={rc.day}
             pct={(rc.day / maxRequests) * 100}
             color="hsl(221, 83%, 53%)"
           />
           <StatCard
-            label="Requests (1w)"
+            label={t("dashboard.stats.requests1w")}
             value={rc.week}
             pct={(rc.week / maxRequests) * 100}
             color="hsl(142, 71%, 38%)"
           />
           <StatCard
-            label="Requests (1m)"
+            label={t("dashboard.stats.requests1m")}
             value={rc.month}
             pct={(rc.month / maxRequests) * 100}
             color="hsl(30, 91%, 55%)"
@@ -214,7 +171,7 @@ export default function AdminHome() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm flex items-center gap-1.5">
                 <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
-                Model Call Count
+                {t("dashboard.chart.modelCallCount")}
               </CardTitle>
               <Tabs
                 value={period}
@@ -270,7 +227,7 @@ export default function AdminHome() {
               </ResponsiveContainer>
             ) : (
               <div className="text-xs text-muted-foreground py-8 text-center">
-                No data for this period
+                {t("dashboard.chart.noData")}
               </div>
             )}
           </CardContent>
@@ -282,7 +239,7 @@ export default function AdminHome() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm flex items-center gap-1.5">
                 <Zap className="h-3.5 w-3.5 text-muted-foreground" />
-                Token Usage
+                {t("dashboard.chart.tokenUsage")}
               </CardTitle>
               <Tabs
                 value={period}
@@ -361,7 +318,7 @@ export default function AdminHome() {
               </ResponsiveContainer>
             ) : (
               <div className="text-xs text-muted-foreground py-8 text-center">
-                No token data for this period
+                {t("dashboard.chart.noTokenData")}
               </div>
             )}
           </CardContent>
@@ -370,7 +327,50 @@ export default function AdminHome() {
 
       {/* Navigation cards */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {CARDS.map((card) => (
+        {([
+          {
+            href: "/providers",
+            label: t("dashboard.nav.providers"),
+            icon: Server,
+            desc: t("dashboard.nav.providersDesc"),
+          },
+          {
+            href: "/models",
+            label: t("dashboard.nav.models"),
+            icon: Layers,
+            desc: t("dashboard.nav.modelsDesc"),
+          },
+          {
+            href: "/api-keys",
+            label: t("dashboard.nav.apiKeys"),
+            icon: Key,
+            desc: t("dashboard.nav.apiKeysDesc"),
+          },
+          {
+            href: "/quota",
+            label: t("dashboard.nav.quota"),
+            icon: BarChart3,
+            desc: t("dashboard.nav.quotaDesc"),
+          },
+          {
+            href: "/logs",
+            label: t("dashboard.nav.logs"),
+            icon: ScrollText,
+            desc: t("dashboard.nav.logsDesc"),
+          },
+          {
+            href: "/users",
+            label: t("dashboard.nav.users"),
+            icon: Users,
+            desc: t("dashboard.nav.usersDesc"),
+          },
+          {
+            href: "/settings",
+            label: t("dashboard.nav.settings"),
+            icon: Settings,
+            desc: t("dashboard.nav.settingsDesc"),
+          },
+        ] as const).map((card) => (
           <Link
             key={card.href}
             href={card.href}
@@ -428,6 +428,7 @@ function QuotaStatCard({
   nearLimit: number;
   total: number;
 }) {
+  const t = useT();
   const hasIssues = nearLimit > 0;
   return (
     <Card>
@@ -439,10 +440,10 @@ function QuotaStatCard({
         )}
         <div>
           <div className="text-lg font-semibold tabular-nums">
-            {hasIssues ? `${nearLimit}/${total}` : "OK"}
+            {hasIssues ? `${nearLimit}/${total}` : t("dashboard.quota.okValue")}
           </div>
           <div className="text-xs text-muted-foreground">
-            {hasIssues ? "Near limit" : "Quota Usage"}
+            {hasIssues ? t("dashboard.quota.nearLimit") : t("dashboard.quota.ok")}
           </div>
         </div>
       </CardContent>

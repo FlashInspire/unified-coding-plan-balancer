@@ -18,19 +18,21 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useState } from "react";
+import { useT } from "./i18n-provider";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Overview", icon: LayoutDashboard },
-  { href: "/providers", label: "Providers", icon: Server },
-  { href: "/models", label: "Models", icon: Layers },
-  { href: "/api-keys", label: "API Keys", icon: Key },
-  { href: "/quota", label: "Quota", icon: BarChart3 },
-  { href: "/logs", label: "Logs & Usage", icon: ScrollText },
-  { href: "/users", label: "Users", icon: Users },
+  { href: "/", labelKey: "nav.overview", icon: LayoutDashboard },
+  { href: "/providers", labelKey: "nav.providers", icon: Server },
+  { href: "/models", labelKey: "nav.models", icon: Layers },
+  { href: "/api-keys", labelKey: "nav.apiKeys", icon: Key },
+  { href: "/quota", labelKey: "nav.quota", icon: BarChart3 },
+  { href: "/logs", labelKey: "nav.logs", icon: ScrollText },
+  { href: "/users", labelKey: "nav.users", icon: Users },
 ] as const;
 
 function NavContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const t = useT();
 
   return (
     <div className="flex h-full flex-col">
@@ -40,7 +42,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
           className="font-bold text-lg tracking-tight text-sidebar-foreground"
           onClick={onNavigate}
         >
-          UCPB
+          {t("sidebar.logo")}
         </Link>
       </div>
       <ScrollArea className="flex-1 py-2">
@@ -62,7 +64,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
                 )}
               >
                 <item.icon className="h-4 w-4 shrink-0" />
-                {item.label}
+                {t(item.labelKey)}
               </Link>
             );
           })}
@@ -80,7 +82,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
           )}
         >
           <Settings className="h-4 w-4 shrink-0" />
-          Settings
+          {t("nav.settings")}
         </Link>
       </div>
     </div>

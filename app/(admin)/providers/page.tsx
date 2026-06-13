@@ -16,13 +16,17 @@ import {
 } from "@/components/ui/tooltip";
 import { Pencil, Power } from "lucide-react";
 import type { ProviderRow } from "@/lib/types";
+import { useT } from "../_components/i18n-provider";
 
 // ---------------------------------------------------------------------------
 // Form field definitions
 // ---------------------------------------------------------------------------
 
 /** Basic info section — used for both create and edit. */
-function basicFields(includeId: boolean) {
+function basicFields(
+  includeId: boolean,
+  t: (key: string) => string,
+) {
   const fields: Array<{
     name: string;
     label: string;
@@ -34,16 +38,16 @@ function basicFields(includeId: boolean) {
   if (includeId) {
     fields.push({
       name: "id",
-      label: "ID (slug)",
+      label: t("providers.form.id"),
       type: "text",
       required: true,
     });
   }
   fields.push(
-    { name: "name", label: "Name", type: "text", required: true },
+    { name: "name", label: t("providers.form.name"), type: "text", required: true },
     {
       name: "planStartTime",
-      label: "Subscription Start Time",
+      label: t("providers.form.planStartTime"),
       type: "datetime",
       defaultValue: "",
     },
@@ -54,95 +58,100 @@ function basicFields(includeId: boolean) {
 function endpointsTabs(
   openaiConfigured?: boolean,
   anthropicConfigured?: boolean,
+  t: (key: string) => string = (k) => k,
 ) {
   return {
     type: "tabs" as const,
     tabs: [
       {
-        label: `OpenAI${openaiConfigured ? " (Configured)" : ""}`,
+        label: `${t("providers.tab.openai")}${openaiConfigured ? t("providers.tab.configured") : ""}`,
         fields: [
-          { name: "baseUrlOpenai", label: "Base URL", type: "text" as const },
-          { name: "apiKeyOpenai", label: "API Key", type: "text" as const },
+          { name: "baseUrlOpenai", label: t("providers.form.baseUrl"), type: "text" as const },
+          { name: "apiKeyOpenai", label: t("providers.form.apiKey"), type: "text" as const },
         ],
       },
       {
-        label: `Anthropic${anthropicConfigured ? " (Configured)" : ""}`,
+        label: `${t("providers.tab.anthropic")}${anthropicConfigured ? t("providers.tab.configured") : ""}`,
         fields: [
           {
             name: "baseUrlAnthropic",
-            label: "Base URL",
+            label: t("providers.form.baseUrl"),
             type: "text" as const,
           },
-          { name: "apiKeyAnthropic", label: "API Key", type: "text" as const },
+          { name: "apiKeyAnthropic", label: t("providers.form.apiKey"), type: "text" as const },
         ],
       },
     ],
   };
 }
 
-const USAGE_SECTION_FIELDS = [
-  {
-    name: "usageMode",
-    label: "Usage Mode",
-    type: "select" as const,
-    options: [
-      { value: "request", label: "Request" },
-      { value: "token", label: "Token" },
-    ],
-    defaultValue: "request",
-  },
-  {
-    name: "rollingQuota",
-    label: "Rolling Quota",
-    type: "number" as const,
-  },
-  {
-    name: "weekQuota",
-    label: "Week Quota",
-    type: "number" as const,
-  },
-  {
-    name: "monthQuota",
-    label: "Month Quota",
-    type: "number" as const,
-  },
-  {
-    name: "rollingQuotaUsed",
-    label: "Rolling Quota Used",
-    type: "number" as const,
-    readOnly: true,
-  },
-  {
-    name: "weekQuotaUsed",
-    label: "Week Quota Used",
-    type: "number" as const,
-    readOnly: true,
-  },
-  {
-    name: "monthQuotaUsed",
-    label: "Month Quota Used",
-    type: "number" as const,
-    readOnly: true,
-  },
-];
-
-const CREATE_FIELDS = [
-  { type: "section" as const, legend: "Basic" },
-  ...basicFields(true),
-  { type: "section" as const, legend: "Endpoints" },
-  endpointsTabs(),
-  { type: "section" as const, legend: "Usage Statistic" },
-  ...USAGE_SECTION_FIELDS,
-];
-
-function buildEditFields(p: ProviderRow) {
+function usageSectionFields(t: (key: string) => string) {
   return [
-    { type: "section" as const, legend: "Basic" },
-    ...basicFields(false),
-    { type: "section" as const, legend: "Endpoints" },
-    endpointsTabs(!!p.baseUrlOpenai, !!p.baseUrlAnthropic),
-    { type: "section" as const, legend: "Usage Statistic" },
-    ...USAGE_SECTION_FIELDS,
+    {
+      name: "usageMode",
+      label: t("providers.form.usageMode"),
+      type: "select" as const,
+      options: [
+        { value: "request", label: t("providers.form.usageMode.request") },
+        { value: "token", label: t("providers.form.usageMode.token") },
+      ],
+      defaultValue: "request",
+    },
+    {
+      name: "rollingQuota",
+      label: t("providers.form.rollingQuota"),
+      type: "number" as const,
+    },
+    {
+      name: "weekQuota",
+      label: t("providers.form.weekQuota"),
+      type: "number" as const,
+    },
+    {
+      name: "monthQuota",
+      label: t("providers.form.monthQuota"),
+      type: "number" as const,
+    },
+    {
+      name: "rollingQuotaUsed",
+      label: t("providers.form.rollingQuotaUsed"),
+      type: "number" as const,
+      readOnly: true,
+    },
+    {
+      name: "weekQuotaUsed",
+      label: t("providers.form.weekQuotaUsed"),
+      type: "number" as const,
+      readOnly: true,
+    },
+    {
+      name: "monthQuotaUsed",
+      label: t("providers.form.monthQuotaUsed"),
+      type: "number" as const,
+      readOnly: true,
+    },
+  ];
+}
+
+function createFields(t: (key: string) => string) {
+  return [
+    { type: "section" as const, legend: t("providers.section.basic") },
+    ...basicFields(true, t),
+    { type: "section" as const, legend: t("providers.section.endpoints") },
+    endpointsTabs(undefined, undefined, t),
+    { type: "section" as const, legend: t("providers.section.usageStatistic") },
+    ...usageSectionFields(t),
+  ];
+}
+
+function buildEditFields(p: ProviderRow, t: (key: string) => string) {
+  return [
+    { type: "section" as const, legend: t("providers.section.basic") },
+    ...basicFields(false, t),
+    { type: "section" as const, legend: t("providers.section.endpoints") },
+    endpointsTabs(!!p.baseUrlOpenai, !!p.baseUrlAnthropic, t),
+    { type: "section" as const, legend: t("providers.section.usageStatistic") },
+    ...usageSectionFields(t),
   ];
 }
 
@@ -167,8 +176,8 @@ function formatQuotaNum(n: number): string {
   return n % 1 === 0 ? String(n) : n.toFixed(1);
 }
 
-function formatDuration(ms: number): string {
-  if (ms <= 0) return "soon";
+function formatDuration(ms: number, t: (key: string) => string): string {
+  if (ms <= 0) return t("providers.resetSoon");
   const h = Math.floor(ms / 3_600_000);
   const m = Math.floor((ms % 3_600_000) / 60_000);
   if (h > 0) return `${h}h ${m}m`;
@@ -177,11 +186,11 @@ function formatDuration(ms: number): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-function formatNextReset(resetAt: Date | null): string {
+function formatNextReset(resetAt: Date | null, t: (key: string) => string): string {
   if (!resetAt) return "—";
   const diff = resetAt.getTime() - Date.now();
   if (diff < 24 * 60 * 60_000) {
-    return formatDuration(diff);
+    return formatDuration(diff, t);
   }
   return resetAt.toLocaleString();
 }
@@ -199,6 +208,7 @@ export default function ProvidersPage() {
   const [data, setData] = useState<ProviderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editRow, setEditRow] = useState<ProviderRow | null>(null);
+  const t = useT();
 
   async function load() {
     setLoading(true);
@@ -234,7 +244,7 @@ export default function ProvidersPage() {
   const columns = [
     {
       key: "name",
-      label: "Name",
+      label: t("providers.table.name"),
       className: "w-[180px]",
       render: (row: Record<string, unknown>) => {
         const p = row as unknown as ProviderRow;
@@ -247,7 +257,7 @@ export default function ProvidersPage() {
     },
     {
       key: "quota",
-      label: "Quota",
+      label: t("providers.table.quota"),
       className: "w-[100px]",
       render: (row: Record<string, unknown>) => {
         const p = row as unknown as ProviderRow;
@@ -275,19 +285,19 @@ export default function ProvidersPage() {
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs space-y-1">
               <div>
-                Rolling:{" "}
+                {t("providers.quota.rolling")}{" "}
                 {rp != null
                   ? `${rp.toFixed(0)}% (${formatQuotaNum(p.rollingQuotaUsed)} / ${formatQuotaNum(p.rollingQuota!)})`
                   : `${formatQuotaNum(p.rollingQuotaUsed)} / ∞`}
               </div>
               <div>
-                Week:{" "}
+                {t("providers.quota.week")}{" "}
                 {wp != null
                   ? `${wp.toFixed(0)}% (${formatQuotaNum(p.weekQuotaUsed)} / ${formatQuotaNum(p.weekQuota!)})`
                   : `${formatQuotaNum(p.weekQuotaUsed)} / ∞`}
               </div>
               <div>
-                Month:{" "}
+                {t("providers.quota.month")}{" "}
                 {mp != null
                   ? `${mp.toFixed(0)}% (${formatQuotaNum(p.monthQuotaUsed)} / ${formatQuotaNum(p.monthQuota!)})`
                   : `${formatQuotaNum(p.monthQuotaUsed)} / ∞`}
@@ -299,7 +309,7 @@ export default function ProvidersPage() {
     },
     {
       key: "endpoints",
-      label: "Endpoints",
+      label: t("providers.table.endpoints"),
       className: "w-[120px]",
       render: (row: Record<string, unknown>) => {
         const p = row as unknown as ProviderRow;
@@ -307,12 +317,12 @@ export default function ProvidersPage() {
           <div className="flex items-center gap-1.5 flex-wrap">
             {p.baseUrlOpenai && (
               <Badge variant="default" className="text-[10px]">
-                OpenAI
+                {t("providers.endpoint.openai")}
               </Badge>
             )}
             {p.baseUrlAnthropic && (
               <Badge variant="default" className="text-[10px]">
-                Anthropic
+                {t("providers.endpoint.anthropic")}
               </Badge>
             )}
             {!p.baseUrlOpenai && !p.baseUrlAnthropic && (
@@ -332,11 +342,11 @@ export default function ProvidersPage() {
     <TooltipProvider>
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Providers</h1>
+          <h1 className="text-xl font-semibold">{t("page.providers.title")}</h1>
           <FormDialog
-            title="New Provider"
-            triggerLabel="+ New Provider"
-            fields={CREATE_FIELDS}
+            title={t("providers.dialog.createTitle")}
+            triggerLabel={t("providers.dialog.createTrigger")}
+            fields={createFields(t)}
             wide
             onSubmit={async (v) => {
               await apiFetch("/api/admin/providers", {
@@ -350,8 +360,8 @@ export default function ProvidersPage() {
 
         {/* Edit dialog (controlled) */}
         <FormDialog
-          title={`Edit Provider: ${editRow?.id ?? ""}`}
-          fields={editRow ? buildEditFields(editRow) : CREATE_FIELDS}
+          title={t("providers.dialog.editTitle", { id: editRow?.id ?? "" })}
+          fields={editRow ? buildEditFields(editRow, t) : createFields(t)}
           wide
           open={editRow != null}
           onOpenChange={(o) => {
@@ -367,7 +377,7 @@ export default function ProvidersPage() {
                 }
               : undefined
           }
-          submitLabel="Update"
+          submitLabel={t("dialog.update")}
           onSubmit={async (v) => {
             await apiFetch(`/api/admin/providers/${editRow!.id}`, {
               method: "PATCH",
@@ -385,7 +395,7 @@ export default function ProvidersPage() {
             ))}
           </div>
         ) : data.length === 0 ? (
-          <div className="text-muted-foreground text-xs">No providers yet.</div>
+          <div className="text-muted-foreground text-xs">{t("providers.empty")}</div>
         ) : (
           <DataTable
             columns={columns}
@@ -417,7 +427,7 @@ export default function ProvidersPage() {
                     variant="ghost"
                     size="icon-xs"
                     onClick={() => void handleToggle(p)}
-                    title={p.enabled ? "Disable" : "Enable"}
+                    title={p.enabled ? t("providers.action.disable") : t("providers.action.enable")}
                   >
                     <Power
                       className={`h-3 w-3 ${
@@ -429,7 +439,7 @@ export default function ProvidersPage() {
               );
             }}
             onDelete={async (id) => {
-              if (!confirm("Delete this provider?")) return;
+              if (!confirm(t("providers.confirmDelete"))) return;
               await handleDelete(id);
             }}
           />

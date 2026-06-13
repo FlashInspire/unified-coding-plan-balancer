@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { apiFetch } from "../_components/api";
+import { useT, useI18n } from "../_components/i18n-provider";
+import { useTheme } from "../_components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,7 +21,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { signOut } from "next-auth/react";
-import { LogOut, Lock } from "lucide-react";
+import { LogOut, Lock, Sun, Moon, Monitor, Globe } from "lucide-react";
 
 interface SettingEntry {
   value: string;
@@ -37,13 +40,14 @@ const SETTING_LABELS: Record<string, string> = {
 };
 
 export default function SettingsPage() {
+  const t = useT();
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold">Settings</h1>
+      <h1 className="text-xl font-semibold">{t("page.settings.title")}</h1>
       <Tabs defaultValue="profile">
         <TabsList variant="line">
-          <TabsTrigger value="profile">User Profile</TabsTrigger>
-          <TabsTrigger value="system">System Settings</TabsTrigger>
+          <TabsTrigger value="profile">{t("settings.tabs.profile")}</TabsTrigger>
+          <TabsTrigger value="system">{t("settings.tabs.system")}</TabsTrigger>
         </TabsList>
         <TabsContent value="profile">
           <UserProfileCard />
@@ -57,12 +61,18 @@ export default function SettingsPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Tab 1: User Profile — profile info, change password, sign out
+// Tab 1: User Profile — profile info, preferences, change password, sign out
 // ---------------------------------------------------------------------------
 function UserProfileCard() {
+  const t = useT();
+  const { locale, setLocale } = useI18n();
+  const { theme, setTheme } = useTheme();
+  const { update: updateSession } = useSession();
   const [profile, setProfile] = useState<{
     username: string;
     lastSignInAt: string | null;
+    language: string;
+    theme: string;
   } | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [pwOpen, setPwOpen] = useState(false);
@@ -77,7 +87,12 @@ function UserProfileCard() {
     queueMicrotask(async () => {
       try {
         const r = await apiFetch<{
-          data: { username: string; lastSignInAt: string | null };
+          data: {
+            username: string;
+            lastSignInAt: string | null;
+            language: string;
+            theme: string;
+          };
         }>("/api/admin/me");
         setProfile(r.data);
       } finally {
@@ -86,17 +101,40 @@ function UserProfileCard() {
     });
   }, []);
 
+  async function handlePreferenceChange(
+    key: "language" | "theme",
+    value: string,
+  ) {
+    try {
+      await apiFetch("/api/admin/preferences", {
+        method: "PATCH",
+        body: JSON.stringify({ [key]: value }),
+      });
+      // Apply immediately.
+      if (key === "language") {
+        setLocale(value);
+      } else {
+        setTheme(value as "light" | "dark" | "system");
+      }
+      // Update session so JWT carries the new preference.
+      await updateSession({ [key]: value });
+      setProfile((prev) => (prev ? { ...prev, [key]: value } : prev));
+    } catch {
+      // Silently fail — preference is non-critical.
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setSuccess(false);
 
     if (newPassword !== confirm) {
-      setError("New passwords do not match");
+      setError(t("settings.profile.passwordMismatch"));
       return;
     }
     if (newPassword.length < 6) {
-      setError("New password must be at least 6 characters");
+      setError(t("settings.profile.passwordTooShort"));
       return;
     }
 
@@ -123,7 +161,7 @@ function UserProfileCard() {
   return (
     <Card className="max-w-md mt-3">
       <CardHeader>
-        <CardTitle className="text-sm">User Profile</CardTitle>
+        <CardTitle className="text-sm">{t("settings.profile.title")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {profileLoading ? (
@@ -131,12 +169,16 @@ function UserProfileCard() {
         ) : profile ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Username</span>
+              <span className="text-xs text-muted-foreground">
+                {t("settings.profile.username")}
+              </span>
               <span className="text-xs font-medium">{profile.username}</span>
             </div>
             <Separator />
             <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Last Login</span>
+              <span className="text-xs text-muted-foreground">
+                {t("settings.profile.lastLogin")}
+              </span>
               <span className="text-xs">
                 {profile.lastSignInAt
                   ? new Date(profile.lastSignInAt).toLocaleString()
@@ -147,21 +189,75 @@ function UserProfileCard() {
           </div>
         ) : null}
 
+        {/* Language preference */}
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <Globe className="h-3.5 w-3.5" />
+            {t("settings.profile.language")}
+          </span>
+          <div className="flex gap-1">
+            {(["en", "zh"] as const).map((lang) => (
+              <button
+                key={lang}
+                onClick={() => handlePreferenceChange("language", lang)}
+                className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                  locale === lang
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted hover:bg-muted/80 text-muted-foreground"
+                }`}
+              >
+                {t(`settings.profile.language.${lang}`)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <Separator />
+
+        {/* Theme preference */}
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+            {theme === "dark" ? (
+              <Moon className="h-3.5 w-3.5" />
+            ) : theme === "light" ? (
+              <Sun className="h-3.5 w-3.5" />
+            ) : (
+              <Monitor className="h-3.5 w-3.5" />
+            )}
+            {t("settings.profile.theme")}
+          </span>
+          <div className="flex gap-1">
+            {(["light", "dark", "system"] as const).map((t_) => (
+              <button
+                key={t_}
+                onClick={() => handlePreferenceChange("theme", t_)}
+                className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                  theme === t_
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted hover:bg-muted/80 text-muted-foreground"
+                }`}
+              >
+                {t(`settings.profile.theme.${t_}`)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <Separator />
+
         <Dialog open={pwOpen} onOpenChange={setPwOpen}>
           <DialogTrigger asChild>
             <Button variant="outline" className="w-full">
               <Lock className="h-3.5 w-3.5 mr-2" />
-              Change Password
+              {t("settings.profile.changePassword")}
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-sm">
             <DialogHeader>
-              <DialogTitle>Change Password</DialogTitle>
+              <DialogTitle>{t("settings.profile.changePassword")}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium mb-1 text-muted-foreground">
-                  Current Password
+                  {t("settings.profile.currentPassword")}
                 </label>
                 <Input
                   type="password"
@@ -172,7 +268,7 @@ function UserProfileCard() {
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1 text-muted-foreground">
-                  New Password
+                  {t("settings.profile.newPassword")}
                 </label>
                 <Input
                   type="password"
@@ -183,7 +279,7 @@ function UserProfileCard() {
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1 text-muted-foreground">
-                  Confirm New Password
+                  {t("settings.profile.confirmPassword")}
                 </label>
                 <Input
                   type="password"
@@ -199,7 +295,7 @@ function UserProfileCard() {
               )}
               {success && (
                 <div className="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700">
-                  Password changed successfully.
+                  {t("settings.profile.passwordChanged")}
                 </div>
               )}
               <DialogFooter>
@@ -208,10 +304,10 @@ function UserProfileCard() {
                   variant="outline"
                   onClick={() => setPwOpen(false)}
                 >
-                  Cancel
+                  {t("dialog.cancel")}
                 </Button>
                 <Button type="submit" disabled={loading}>
-                  {loading ? "Saving…" : "Save"}
+                  {loading ? "Saving…" : t("dialog.save")}
                 </Button>
               </DialogFooter>
             </form>
@@ -226,7 +322,7 @@ function UserProfileCard() {
           onClick={() => signOut({ callbackUrl: "/login" })}
         >
           <LogOut className="h-3.5 w-3.5 mr-2" />
-          Sign Out
+          {t("settings.profile.signOut")}
         </Button>
       </CardContent>
     </Card>

@@ -38,6 +38,15 @@ function body(req: NormalizedChatRequest, stream: boolean) {
       ...(out.stream_options as Record<string, unknown>),
       include_usage: true,
     };
+  } else {
+    // Non-streaming: also request usage explicitly. Some providers honour
+    // stream_options even for non-streaming; others use a top-level usage
+    // include flag. Setting both covers all OpenAI-compatible variants.
+    out.stream_options = {
+      ...(out.stream_options as Record<string, unknown>),
+      include_usage: true,
+    };
+    out.usage = { include: true };
   }
 
   return out;
@@ -160,7 +169,14 @@ export class OpenAIAdapter implements ProviderAdapter {
     yield {
       delta: "",
       finishReason: finalFinishReason ?? "stop",
-      usage: finalUsage,
+      // Always yield a concrete usage object. When the upstream omits usage
+      // (e.g. provider doesn't support stream_options), finalUsage stays
+      // undefined — fall back to zeros so dispatch always sees an object.
+      usage: finalUsage ?? {
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        outputTokens: 0,
+      },
     };
   }
 }

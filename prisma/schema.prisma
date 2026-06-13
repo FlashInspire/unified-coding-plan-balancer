@@ -150,6 +150,21 @@ model AdminUser {
   mustChangePassword Boolean   @default(false)
   lastSignInAt       DateTime?
   createdAt          DateTime  @default(now())
+
+  preference UserPreference?
+}
+
+// -----------------------------------------------------------------------------
+// UserPreference — per-user UI preferences (language, theme).
+// -----------------------------------------------------------------------------
+model UserPreference {
+  userId    String   @id
+  language  String   @default("en")   // "en" | "zh"
+  theme     String   @default("system") // "light" | "dark" | "system"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // -----------------------------------------------------------------------------
