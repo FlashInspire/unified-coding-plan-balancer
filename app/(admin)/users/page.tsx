@@ -22,7 +22,18 @@ interface UserRow {
   rollingQuota: number | null;
   weekQuota: number | null;
   monthQuota: number | null;
-  tokensUsed: number;
+  rollingInputTokensUsed: number;
+  rollingCachedReadTokensUsed: number;
+  rollingOutputTokensUsed: number;
+  weekInputTokensUsed: number;
+  weekCachedReadTokensUsed: number;
+  weekOutputTokensUsed: number;
+  monthInputTokensUsed: number;
+  monthCachedReadTokensUsed: number;
+  monthOutputTokensUsed: number;
+  quotaMultiplierInput: number;
+  quotaMultiplierCachedRead: number;
+  quotaMultiplierOutput: number;
 }
 
 export default function UsersPage() {
@@ -173,6 +184,24 @@ export default function UsersPage() {
             type: "number" as const,
             placeholder: "0 = unlimited",
           },
+          {
+            name: "quotaMultiplierInput",
+            label: t("users.form.quotaMultiplierInput"),
+            type: "number" as const,
+            placeholder: "1.0",
+          },
+          {
+            name: "quotaMultiplierCachedRead",
+            label: t("users.form.quotaMultiplierCachedRead"),
+            type: "number" as const,
+            placeholder: "0.1",
+          },
+          {
+            name: "quotaMultiplierOutput",
+            label: t("users.form.quotaMultiplierOutput"),
+            type: "number" as const,
+            placeholder: "4.0",
+          },
         ]}
         open={editRow != null}
         onOpenChange={(o) => {
@@ -190,6 +219,9 @@ export default function UsersPage() {
                 rollingQuota: editRow.rollingQuota ?? "",
                 weekQuota: editRow.weekQuota ?? "",
                 monthQuota: editRow.monthQuota ?? "",
+                quotaMultiplierInput: editRow.quotaMultiplierInput,
+                quotaMultiplierCachedRead: editRow.quotaMultiplierCachedRead,
+                quotaMultiplierOutput: editRow.quotaMultiplierOutput,
               }
             : undefined
         }
@@ -212,6 +244,23 @@ export default function UsersPage() {
               body.weekQuota = Number(v.weekQuota);
             if (v.monthQuota !== undefined && v.monthQuota !== "")
               body.monthQuota = Number(v.monthQuota);
+            if (
+              v.quotaMultiplierInput !== undefined &&
+              v.quotaMultiplierInput !== ""
+            )
+              body.quotaMultiplierInput = Number(v.quotaMultiplierInput);
+            if (
+              v.quotaMultiplierCachedRead !== undefined &&
+              v.quotaMultiplierCachedRead !== ""
+            )
+              body.quotaMultiplierCachedRead = Number(
+                v.quotaMultiplierCachedRead,
+              );
+            if (
+              v.quotaMultiplierOutput !== undefined &&
+              v.quotaMultiplierOutput !== ""
+            )
+              body.quotaMultiplierOutput = Number(v.quotaMultiplierOutput);
             await apiFetch(`/api/admin/users/${editRow!.id}`, {
               method: "PATCH",
               body: JSON.stringify(body),
@@ -340,7 +389,7 @@ export default function UsersPage() {
             {
               key: "quota",
               label: t("users.table.quota"),
-              className: "w-[120px]",
+              className: "w-[160px]",
               render: (r) => {
                 const row = r as unknown as UserRow;
                 const fmt = (n: number) =>
@@ -349,17 +398,31 @@ export default function UsersPage() {
                     : n >= 1_000
                       ? `${(n / 1_000).toFixed(1)}K`
                       : String(n);
+                const eff = (period: "rolling" | "week" | "month") => {
+                  const input = row[
+                    `${period}InputTokensUsed` as keyof UserRow
+                  ] as number;
+                  const cached = row[
+                    `${period}CachedReadTokensUsed` as keyof UserRow
+                  ] as number;
+                  const output = row[
+                    `${period}OutputTokensUsed` as keyof UserRow
+                  ] as number;
+                  return (
+                    input * row.quotaMultiplierInput +
+                    cached * row.quotaMultiplierCachedRead +
+                    output * row.quotaMultiplierOutput
+                  );
+                };
                 const parts: string[] = [];
                 if (row.rollingQuota != null && row.rollingQuota > 0)
                   parts.push(
-                    `H: ${fmt(row.tokensUsed)}/${fmt(row.rollingQuota)}`,
+                    `H: ${fmt(eff("rolling"))}/${fmt(row.rollingQuota)}`,
                   );
                 if (row.weekQuota != null && row.weekQuota > 0)
-                  parts.push(`W: ${fmt(row.tokensUsed)}/${fmt(row.weekQuota)}`);
+                  parts.push(`W: ${fmt(eff("week"))}/${fmt(row.weekQuota)}`);
                 if (row.monthQuota != null && row.monthQuota > 0)
-                  parts.push(
-                    `M: ${fmt(row.tokensUsed)}/${fmt(row.monthQuota)}`,
-                  );
+                  parts.push(`M: ${fmt(eff("month"))}/${fmt(row.monthQuota)}`);
                 return (
                   <span className="text-xs text-muted-foreground">
                     {parts.length > 0 ? parts.join(" ") : "∞"}

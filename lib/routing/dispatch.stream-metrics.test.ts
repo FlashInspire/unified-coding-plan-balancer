@@ -68,8 +68,19 @@ vi.mock("@/lib/routing/sticky", () => ({
   setStickyProvider: vi.fn(async () => {}),
 }));
 
-vi.mock("@/lib/quota/keyTokenBuffer", () => ({
-  userTokenBuffer: { increment: vi.fn(), isQuotaExceeded: vi.fn(() => false) },
+vi.mock("@/lib/fee-pipeline/user-buffer", () => ({
+  userDimensionBuffer: {
+    increment: vi.fn(),
+    isQuotaExceeded: vi.fn(() => false),
+  },
+}));
+
+vi.mock("@/lib/fee-pipeline/record", () => ({
+  recordUsage: vi.fn(async () => ({
+    providerFee: 0,
+    userFee: 0,
+    apiKeyTokens: 0,
+  })),
 }));
 
 vi.mock("@/lib/routing/activeRequests", () => ({
@@ -187,7 +198,12 @@ describe("dispatchDirectChatStream in-flight row closing", () => {
         yield { delta: "hi" } as NormalizedChunk;
         yield {
           delta: "",
-          usage: { inputTokens: 10, cachedInputTokens: 0, outputTokens: 5 },
+          usage: {
+            inputTokens: 10,
+            cachedReadTokens: 0,
+            cacheWriteTokens: 0,
+            outputTokens: 5,
+          },
           finishReason: "stop",
         } as NormalizedChunk;
       })(),

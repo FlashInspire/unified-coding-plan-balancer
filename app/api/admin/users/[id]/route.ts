@@ -13,6 +13,9 @@ const patchSchema = z.object({
   rollingQuota: z.number().int().nonnegative().nullable().optional(),
   weekQuota: z.number().int().nonnegative().nullable().optional(),
   monthQuota: z.number().int().nonnegative().nullable().optional(),
+  quotaMultiplierInput: z.number().nonnegative().optional(),
+  quotaMultiplierCachedRead: z.number().nonnegative().optional(),
+  quotaMultiplierOutput: z.number().nonnegative().optional(),
 });
 
 export async function PATCH(
@@ -55,12 +58,18 @@ export async function PATCH(
     if (
       body.rollingQuota !== undefined ||
       body.weekQuota !== undefined ||
-      body.monthQuota !== undefined
+      body.monthQuota !== undefined ||
+      body.quotaMultiplierInput !== undefined ||
+      body.quotaMultiplierCachedRead !== undefined ||
+      body.quotaMultiplierOutput !== undefined
     ) {
       await adminUserRepo.updateQuota(id, {
         rollingQuota: body.rollingQuota,
         weekQuota: body.weekQuota,
         monthQuota: body.monthQuota,
+        quotaMultiplierInput: body.quotaMultiplierInput,
+        quotaMultiplierCachedRead: body.quotaMultiplierCachedRead,
+        quotaMultiplierOutput: body.quotaMultiplierOutput,
       });
     }
 

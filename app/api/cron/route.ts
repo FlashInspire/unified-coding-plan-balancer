@@ -18,8 +18,10 @@ import {
 } from "@/lib/metrics/aggregator";
 import { archiveOnce } from "@/lib/metrics/archiver";
 import { resetTick } from "@/lib/quota/reset-scheduler";
-import { userTokenBuffer } from "@/lib/quota/keyTokenBuffer";
+import { userDimensionBuffer } from "@/lib/fee-pipeline/user-buffer";
+import { apiKeyDimensionBuffer } from "@/lib/fee-pipeline/api-key-buffer";
 import { adminUserRepo } from "@/lib/repositories/adminUserRepo";
+import { apiKeyRepo } from "@/lib/repositories/apiKeyRepo";
 
 /** Last time archive was run (epoch ms). 0 = never. */
 let lastArchiveAt = 0;
@@ -53,15 +55,28 @@ export async function GET(): Promise<Response> {
     jobs.aggregate = { error: err instanceof Error ? err.message : "unknown" };
   }
 
-  // 3. Flush user token buffer to DB
+  // 3. Flush user dimension buffer to DB
   try {
-    const drained = userTokenBuffer.drain();
+    const drained = userDimensionBuffer.drain();
     if (drained.size > 0) {
-      await adminUserRepo.flushTokenIncrements(drained);
+      await adminUserRepo.flushDimensionIncrements(drained);
     }
     jobs.userTokenFlush = { users: drained.size };
   } catch (err) {
     jobs.userTokenFlush = {
+      error: err instanceof Error ? err.message : "unknown",
+    };
+  }
+
+  // 3b. Flush API key dimension buffer to DB
+  try {
+    const keyDrained = apiKeyDimensionBuffer.drain();
+    if (keyDrained.size > 0) {
+      await apiKeyRepo.flushDimensionIncrements(keyDrained);
+    }
+    jobs.apiKeyFlush = { keys: keyDrained.size };
+  } catch (err) {
+    jobs.apiKeyFlush = {
       error: err instanceof Error ? err.message : "unknown",
     };
   }

@@ -93,9 +93,11 @@ export class OpenAIAdapter implements ProviderAdapter {
       toolCalls: choice?.message?.tool_calls,
       rawMessage: choice?.message,
       usage: {
-        inputTokens: json.usage?.prompt_tokens ?? 0,
-        cachedInputTokens:
-          json.usage?.prompt_tokens_details?.cached_tokens ?? 0,
+        inputTokens:
+          (json.usage?.prompt_tokens ?? 0) -
+          (json.usage?.prompt_tokens_details?.cached_tokens ?? 0),
+        cachedReadTokens: json.usage?.prompt_tokens_details?.cached_tokens ?? 0,
+        cacheWriteTokens: 0,
         outputTokens: json.usage?.completion_tokens ?? 0,
       },
     };
@@ -148,9 +150,11 @@ export class OpenAIAdapter implements ProviderAdapter {
       if (choice?.finish_reason) finalFinishReason = choice.finish_reason;
       if (evt.usage) {
         finalUsage = {
-          inputTokens: evt.usage.prompt_tokens ?? 0,
-          cachedInputTokens:
-            evt.usage.prompt_tokens_details?.cached_tokens ?? 0,
+          inputTokens:
+            (evt.usage.prompt_tokens ?? 0) -
+            (evt.usage.prompt_tokens_details?.cached_tokens ?? 0),
+          cachedReadTokens: evt.usage.prompt_tokens_details?.cached_tokens ?? 0,
+          cacheWriteTokens: 0,
           outputTokens: evt.usage.completion_tokens ?? 0,
         };
       }
@@ -170,7 +174,8 @@ export class OpenAIAdapter implements ProviderAdapter {
       // undefined — fall back to zeros so dispatch always sees an object.
       usage: finalUsage ?? {
         inputTokens: 0,
-        cachedInputTokens: 0,
+        cachedReadTokens: 0,
+        cacheWriteTokens: 0,
         outputTokens: 0,
       },
     };

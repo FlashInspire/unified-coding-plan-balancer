@@ -73,7 +73,10 @@ export interface NormalizedChatRequest {
 
 export interface NormalizedUsage {
   inputTokens: number;
-  cachedInputTokens: number;
+  /** Tokens served from prompt cache (OpenAI cached_tokens / Anthropic cache_read). */
+  cachedReadTokens: number;
+  /** Tokens written to prompt cache (Anthropic cache_creation; 0 for OpenAI). */
+  cacheWriteTokens: number;
   outputTokens: number;
 }
 

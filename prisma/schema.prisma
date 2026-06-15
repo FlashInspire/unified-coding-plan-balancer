@@ -123,13 +123,27 @@ model ProviderModel {
 // Prefix is always "sk-y6-"; the full key = "sk-y6-" + randomPart.
 // -----------------------------------------------------------------------------
 model ApiKey {
-  id        String    @id @default(cuid())
-  keyHash   String    @unique // SHA-256 hex of plaintext key
-  name      String
-  ownerId   String?   // null = admin-owned (legacy keys)
-  enabled   Boolean   @default(true)
-  createdAt DateTime  @default(now())
+  id         String    @id @default(cuid())
+  keyHash    String    @unique // SHA-256 hex of plaintext key
+  name       String
+  ownerId    String? // null = admin-owned (legacy keys)
+  enabled    Boolean   @default(true)
+  createdAt  DateTime  @default(now())
   lastUsedAt DateTime?
+
+  // Per-dimension token counters (raw counts, no fee-rate weighting).
+  rollingInputTokensUsed      Float     @default(0)
+  rollingCachedReadTokensUsed Float     @default(0)
+  rollingOutputTokensUsed     Float     @default(0)
+  weekInputTokensUsed         Float     @default(0)
+  weekCachedReadTokensUsed    Float     @default(0)
+  weekOutputTokensUsed        Float     @default(0)
+  monthInputTokensUsed        Float     @default(0)
+  monthCachedReadTokensUsed   Float     @default(0)
+  monthOutputTokensUsed       Float     @default(0)
+  rollingQuotaResetAt         DateTime?
+  weekQuotaResetAt            DateTime?
+  monthQuotaResetAt           DateTime?
 
   owner AdminUser? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
 
@@ -140,24 +154,38 @@ model ApiKey {
 // AdminUser — admin console accounts (bcrypt-hashed password).
 // -----------------------------------------------------------------------------
 model AdminUser {
-  id                 String    @id @default(cuid())
-  username           String    @unique
-  passwordHash       String
-  role               String    @default("user") // "admin" | "user"
-  email              String? // optional, no validation
-  displayName        String? // shown in UI
-  avatarUrl          String? // optional URL; UI falls back to initial-letter circle
-  mustChangePassword Boolean   @default(false)
-  lastSignInAt       DateTime?
-  createdAt          DateTime  @default(now())
+  id                          String    @id @default(cuid())
+  username                    String    @unique
+  passwordHash                String
+  role                        String    @default("user") // "admin" | "user"
+  email                       String? // optional, no validation
+  displayName                 String? // shown in UI
+  avatarUrl                   String? // optional URL; UI falls back to initial-letter circle
+  mustChangePassword          Boolean   @default(false)
+  lastSignInAt                DateTime?
+  createdAt                   DateTime  @default(now())
   // Token quota (null or 0 = unlimited) — admin-editable only
-  rollingQuota        Int?
-  weekQuota           Int?
-  monthQuota          Int?
-  tokensUsed          Int       @default(0) // current period tokens (input+cached+output)
-  rollingQuotaResetAt DateTime?
-  weekQuotaResetAt    DateTime?
-  monthQuotaResetAt   DateTime?
+  rollingQuota                Int?
+  weekQuota                   Int?
+  monthQuota                  Int?
+  // Per-dimension token counters (weighted by multipliers).
+  rollingInputTokensUsed      Float     @default(0)
+  rollingCachedReadTokensUsed Float     @default(0)
+  rollingOutputTokensUsed     Float     @default(0)
+  weekInputTokensUsed         Float     @default(0)
+  weekCachedReadTokensUsed    Float     @default(0)
+  weekOutputTokensUsed        Float     @default(0)
+  monthInputTokensUsed        Float     @default(0)
+  monthCachedReadTokensUsed   Float     @default(0)
+  monthOutputTokensUsed       Float     @default(0)
+  rollingQuotaResetAt         DateTime?
+  weekQuotaResetAt            DateTime?
+  monthQuotaResetAt           DateTime?
+
+  // Quota multipliers: how each token dimension counts against the quota budget.
+  quotaMultiplierInput      Float @default(1.0)
+  quotaMultiplierCachedRead Float @default(0.1)
+  quotaMultiplierOutput     Float @default(4.0)
 
   preference UserPreference?
   apiKeys    ApiKey[]

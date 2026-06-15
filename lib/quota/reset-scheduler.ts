@@ -18,7 +18,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { resetQuotaRetries } from "@/lib/routing/selectCandidate";
-import { userTokenBuffer } from "@/lib/quota/keyTokenBuffer";
+import { userDimensionBuffer } from "@/lib/fee-pipeline/user-buffer";
 
 // ---------------------------------------------------------------------------
 // Exported helpers (pure, testable)
@@ -169,6 +169,14 @@ export function computeNextNaturalMonthReset(now: Date): Date {
   return new Date(Date.UTC(y, m + 1, 1, 0, 0, 0, 0));
 }
 
+/** Next midnight UTC (daily reset). */
+export function computeNextNaturalDayReset(now: Date): Date {
+  const d = new Date(now);
+  d.setUTCHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d;
+}
+
 // ---------------------------------------------------------------------------
 // Scheduler — exported for cron endpoint
 // ---------------------------------------------------------------------------
@@ -300,12 +308,35 @@ export async function resetTick(): Promise<ResetTickResult> {
       rollingQuota: true,
       weekQuota: true,
       monthQuota: true,
-      tokensUsed: true,
+      rollingInputTokensUsed: true,
+      rollingCachedReadTokensUsed: true,
+      rollingOutputTokensUsed: true,
+      weekInputTokensUsed: true,
+      weekCachedReadTokensUsed: true,
+      weekOutputTokensUsed: true,
+      monthInputTokensUsed: true,
+      monthCachedReadTokensUsed: true,
+      monthOutputTokensUsed: true,
       rollingQuotaResetAt: true,
       weekQuotaResetAt: true,
       monthQuotaResetAt: true,
+      quotaMultiplierInput: true,
+      quotaMultiplierCachedRead: true,
+      quotaMultiplierOutput: true,
     },
   });
+
+  const DIMENSION_ZERO = {
+    rollingInputTokensUsed: 0,
+    rollingCachedReadTokensUsed: 0,
+    rollingOutputTokensUsed: 0,
+    weekInputTokensUsed: 0,
+    weekCachedReadTokensUsed: 0,
+    weekOutputTokensUsed: 0,
+    monthInputTokensUsed: 0,
+    monthCachedReadTokensUsed: 0,
+    monthOutputTokensUsed: 0,
+  };
 
   await Promise.all(
     users.map((u) => {
@@ -317,7 +348,11 @@ export async function resetTick(): Promise<ResetTickResult> {
           u.rollingQuotaResetAt &&
           u.rollingQuotaResetAt.getTime() <= nowTime
         ) {
-          updates.tokensUsed = 0;
+          Object.assign(updates, {
+            rollingInputTokensUsed: 0,
+            rollingCachedReadTokensUsed: 0,
+            rollingOutputTokensUsed: 0,
+          });
           updates.rollingQuotaResetAt = computeNextKeyResetAt(
             "rolling",
             now,
@@ -337,7 +372,11 @@ export async function resetTick(): Promise<ResetTickResult> {
 
       if (u.weekQuota != null && u.weekQuota > 0) {
         if (u.weekQuotaResetAt && u.weekQuotaResetAt.getTime() <= nowTime) {
-          updates.tokensUsed = 0;
+          Object.assign(updates, {
+            weekInputTokensUsed: 0,
+            weekCachedReadTokensUsed: 0,
+            weekOutputTokensUsed: 0,
+          });
           updates.weekQuotaResetAt = computeNextKeyResetAt(
             "week",
             now,
@@ -355,7 +394,11 @@ export async function resetTick(): Promise<ResetTickResult> {
 
       if (u.monthQuota != null && u.monthQuota > 0) {
         if (u.monthQuotaResetAt && u.monthQuotaResetAt.getTime() <= nowTime) {
-          updates.tokensUsed = 0;
+          Object.assign(updates, {
+            monthInputTokensUsed: 0,
+            monthCachedReadTokensUsed: 0,
+            monthOutputTokensUsed: 0,
+          });
           updates.monthQuotaResetAt = computeNextKeyResetAt(
             "month",
             now,
@@ -374,7 +417,7 @@ export async function resetTick(): Promise<ResetTickResult> {
       if (anyReset) {
         keysReset++;
         // Clear quota cache so in-flight checks pick up the reset.
-        userTokenBuffer.clearQuotaCache(u.id);
+        userDimensionBuffer.clearQuotaCache(u.id);
       }
 
       if (Object.keys(updates).length === 0) return Promise.resolve();
@@ -387,13 +430,118 @@ export async function resetTick(): Promise<ResetTickResult> {
 
   // Refresh all user quota caches after potential resets.
   for (const u of users) {
-    userTokenBuffer.setQuotaCache(u.id, {
+    userDimensionBuffer.setQuotaCache(u.id, {
       rollingQuota: u.rollingQuota,
       weekQuota: u.weekQuota,
       monthQuota: u.monthQuota,
-      tokensUsed: u.tokensUsed,
+      rollingInputTokensUsed: u.rollingInputTokensUsed,
+      rollingCachedReadTokensUsed: u.rollingCachedReadTokensUsed,
+      rollingOutputTokensUsed: u.rollingOutputTokensUsed,
+      weekInputTokensUsed: u.weekInputTokensUsed,
+      weekCachedReadTokensUsed: u.weekCachedReadTokensUsed,
+      weekOutputTokensUsed: u.weekOutputTokensUsed,
+      monthInputTokensUsed: u.monthInputTokensUsed,
+      monthCachedReadTokensUsed: u.monthCachedReadTokensUsed,
+      monthOutputTokensUsed: u.monthOutputTokensUsed,
+      quotaMultiplierInput: u.quotaMultiplierInput,
+      quotaMultiplierCachedRead: u.quotaMultiplierCachedRead,
+      quotaMultiplierOutput: u.quotaMultiplierOutput,
     });
   }
+
+  // ── API Key (ApiKey) quota resets ──────────────────────────────
+  // API keys reset at the same cadence as users (1h rolling, weekly Monday, monthly 1st).
+
+  const apiKeys = await prisma.apiKey.findMany({
+    where: {},
+    select: {
+      id: true,
+      createdAt: true,
+      rollingQuotaResetAt: true,
+      weekQuotaResetAt: true,
+      monthQuotaResetAt: true,
+    },
+  });
+
+  await Promise.all(
+    apiKeys.map((k) => {
+      const updates: Record<string, unknown> = {};
+      let anyReset = false;
+
+      // Rolling (1h)
+      if (k.rollingQuotaResetAt && k.rollingQuotaResetAt.getTime() <= nowTime) {
+        Object.assign(updates, {
+          rollingInputTokensUsed: 0,
+          rollingCachedReadTokensUsed: 0,
+          rollingOutputTokensUsed: 0,
+        });
+        updates.rollingQuotaResetAt = computeNextKeyResetAt(
+          "rolling",
+          now,
+          k.createdAt,
+          USER_ROLLING_INTERVAL_HOURS,
+        );
+        anyReset = true;
+      } else if (!k.rollingQuotaResetAt) {
+        updates.rollingQuotaResetAt = computeNextKeyResetAt(
+          "rolling",
+          now,
+          k.createdAt,
+          USER_ROLLING_INTERVAL_HOURS,
+        );
+      }
+
+      // Weekly
+      if (k.weekQuotaResetAt && k.weekQuotaResetAt.getTime() <= nowTime) {
+        Object.assign(updates, {
+          weekInputTokensUsed: 0,
+          weekCachedReadTokensUsed: 0,
+          weekOutputTokensUsed: 0,
+        });
+        updates.weekQuotaResetAt = computeNextKeyResetAt(
+          "week",
+          now,
+          k.createdAt,
+        );
+        anyReset = true;
+      } else if (!k.weekQuotaResetAt) {
+        updates.weekQuotaResetAt = computeNextKeyResetAt(
+          "week",
+          now,
+          k.createdAt,
+        );
+      }
+
+      // Monthly
+      if (k.monthQuotaResetAt && k.monthQuotaResetAt.getTime() <= nowTime) {
+        Object.assign(updates, {
+          monthInputTokensUsed: 0,
+          monthCachedReadTokensUsed: 0,
+          monthOutputTokensUsed: 0,
+        });
+        updates.monthQuotaResetAt = computeNextKeyResetAt(
+          "month",
+          now,
+          k.createdAt,
+        );
+        anyReset = true;
+      } else if (!k.monthQuotaResetAt) {
+        updates.monthQuotaResetAt = computeNextKeyResetAt(
+          "month",
+          now,
+          k.createdAt,
+        );
+      }
+
+      if (anyReset) keysReset++;
+
+      if (Object.keys(updates).length === 0) return Promise.resolve();
+      return prisma.apiKey.update({
+        where: { id: k.id },
+        data: updates,
+      });
+    }),
+  );
 
   return { providersReset, keysReset };
 }

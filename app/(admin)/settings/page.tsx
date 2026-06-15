@@ -121,7 +121,18 @@ function UserProfileCard() {
     rollingQuota: number | null;
     weekQuota: number | null;
     monthQuota: number | null;
-    tokensUsed: number;
+    rollingInputTokensUsed: number;
+    rollingCachedReadTokensUsed: number;
+    rollingOutputTokensUsed: number;
+    weekInputTokensUsed: number;
+    weekCachedReadTokensUsed: number;
+    weekOutputTokensUsed: number;
+    monthInputTokensUsed: number;
+    monthCachedReadTokensUsed: number;
+    monthOutputTokensUsed: number;
+    quotaMultiplierInput: number;
+    quotaMultiplierCachedRead: number;
+    quotaMultiplierOutput: number;
   } | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [pwOpen, setPwOpen] = useState(false);
@@ -148,7 +159,18 @@ function UserProfileCard() {
             rollingQuota: number | null;
             weekQuota: number | null;
             monthQuota: number | null;
-            tokensUsed: number;
+            rollingInputTokensUsed: number;
+            rollingCachedReadTokensUsed: number;
+            rollingOutputTokensUsed: number;
+            weekInputTokensUsed: number;
+            weekCachedReadTokensUsed: number;
+            weekOutputTokensUsed: number;
+            monthInputTokensUsed: number;
+            monthCachedReadTokensUsed: number;
+            monthOutputTokensUsed: number;
+            quotaMultiplierInput: number;
+            quotaMultiplierCachedRead: number;
+            quotaMultiplierOutput: number;
           };
         }>("/api/admin/me");
         setProfile(r.data);
@@ -353,10 +375,38 @@ function UserProfileCard() {
                     : n >= 1_000
                       ? `${(n / 1_000).toFixed(1)}K`
                       : String(n);
+                const effUsed = (period: "rolling" | "week" | "month") => {
+                  const input = profile[
+                    `${period}InputTokensUsed` as keyof typeof profile
+                  ] as number;
+                  const cached = profile[
+                    `${period}CachedReadTokensUsed` as keyof typeof profile
+                  ] as number;
+                  const output = profile[
+                    `${period}OutputTokensUsed` as keyof typeof profile
+                  ] as number;
+                  return (
+                    input * profile.quotaMultiplierInput +
+                    cached * profile.quotaMultiplierCachedRead +
+                    output * profile.quotaMultiplierOutput
+                  );
+                };
                 const dims = [
-                  { label: t("settings.profile.quotaRolling"), q: profile.rollingQuota },
-                  { label: t("settings.profile.quotaWeek"), q: profile.weekQuota },
-                  { label: t("settings.profile.quotaMonth"), q: profile.monthQuota },
+                  {
+                    label: t("settings.profile.quotaRolling"),
+                    q: profile.rollingQuota,
+                    used: effUsed("rolling"),
+                  },
+                  {
+                    label: t("settings.profile.quotaWeek"),
+                    q: profile.weekQuota,
+                    used: effUsed("week"),
+                  },
+                  {
+                    label: t("settings.profile.quotaMonth"),
+                    q: profile.monthQuota,
+                    used: effUsed("month"),
+                  },
                 ].filter((d) => d.q != null && d.q > 0);
                 if (dims.length === 0)
                   return (
@@ -365,10 +415,15 @@ function UserProfileCard() {
                     </span>
                   );
                 return dims.map((d) => (
-                  <div key={d.label} className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">{d.label}</span>
+                  <div
+                    key={d.label}
+                    className="flex items-center justify-between"
+                  >
+                    <span className="text-xs text-muted-foreground">
+                      {d.label}
+                    </span>
                     <span className="text-xs tabular-nums">
-                      {fmt(profile.tokensUsed)} / {fmt(d.q!)}
+                      {fmt(d.used)} / {fmt(d.q!)}
                     </span>
                   </div>
                 ));

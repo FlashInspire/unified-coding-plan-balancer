@@ -112,7 +112,7 @@ export function translateResponse(
       text: resp.text,
       finishReason: mapFinishReason(resp.finishReason, "anthropic", "openai"),
       inputTokens: resp.usage.inputTokens,
-      cachedInputTokens: resp.usage.cachedInputTokens,
+      cachedReadTokens: resp.usage.cachedReadTokens,
       outputTokens: resp.usage.outputTokens,
       toolCalls: resp.toolCalls,
     });
@@ -123,7 +123,7 @@ export function translateResponse(
       text: resp.text,
       finishReason: mapFinishReason(resp.finishReason, "openai", "anthropic"),
       inputTokens: resp.usage.inputTokens,
-      cachedInputTokens: resp.usage.cachedInputTokens,
+      cachedReadTokens: resp.usage.cachedReadTokens,
       outputTokens: resp.usage.outputTokens,
       toolCalls: resp.toolCalls,
     });

@@ -67,4 +67,38 @@ export const apiKeyRepo = {
   async delete(id: string): Promise<void> {
     await prisma.apiKey.delete({ where: { id } });
   },
+
+  /** Bulk increment per-dimension token counters for API keys (called by cron flusher). */
+  async flushDimensionIncrements(
+    increments: Map<
+      string,
+      {
+        inputTokens: number;
+        cachedReadTokens: number;
+        outputTokens: number;
+      }
+    >,
+  ): Promise<void> {
+    for (const [keyId, dims] of increments) {
+      if (
+        dims.inputTokens <= 0 &&
+        dims.cachedReadTokens <= 0 &&
+        dims.outputTokens <= 0
+      )
+        continue;
+      await prisma.$executeRaw`
+        UPDATE ApiKey
+        SET rollingInputTokensUsed      = rollingInputTokensUsed + ${dims.inputTokens},
+            rollingCachedReadTokensUsed = rollingCachedReadTokensUsed + ${dims.cachedReadTokens},
+            rollingOutputTokensUsed     = rollingOutputTokensUsed + ${dims.outputTokens},
+            weekInputTokensUsed         = weekInputTokensUsed + ${dims.inputTokens},
+            weekCachedReadTokensUsed    = weekCachedReadTokensUsed + ${dims.cachedReadTokens},
+            weekOutputTokensUsed        = weekOutputTokensUsed + ${dims.outputTokens},
+            monthInputTokensUsed        = monthInputTokensUsed + ${dims.inputTokens},
+            monthCachedReadTokensUsed   = monthCachedReadTokensUsed + ${dims.cachedReadTokens},
+            monthOutputTokensUsed       = monthOutputTokensUsed + ${dims.outputTokens}
+        WHERE id = ${keyId}
+      `;
+    }
+  },
 };

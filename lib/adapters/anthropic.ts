@@ -112,6 +112,7 @@ export class AnthropicAdapter implements ProviderAdapter {
       usage?: {
         input_tokens?: number;
         cache_read_input_tokens?: number;
+        cache_creation_input_tokens?: number;
         output_tokens?: number;
       };
     };
@@ -142,7 +143,8 @@ export class AnthropicAdapter implements ProviderAdapter {
       rawMessage: json.content,
       usage: {
         inputTokens: json.usage?.input_tokens ?? 0,
-        cachedInputTokens: json.usage?.cache_read_input_tokens ?? 0,
+        cachedReadTokens: json.usage?.cache_read_input_tokens ?? 0,
+        cacheWriteTokens: json.usage?.cache_creation_input_tokens ?? 0,
         outputTokens: json.usage?.output_tokens ?? 0,
       },
     };
@@ -166,7 +168,8 @@ export class AnthropicAdapter implements ProviderAdapter {
     }
 
     let inputTokens = 0;
-    let cachedInput = 0;
+    let cachedRead = 0;
+    let cacheWrite = 0;
     let outputTokens = 0;
     let finishReason: string | null | undefined;
     // Maps Anthropic content_block index → OpenAI tool_calls index for tool_use blocks.
@@ -191,6 +194,7 @@ export class AnthropicAdapter implements ProviderAdapter {
           usage?: {
             input_tokens?: number;
             cache_read_input_tokens?: number;
+            cache_creation_input_tokens?: number;
             output_tokens?: number;
           };
         };
@@ -203,7 +207,8 @@ export class AnthropicAdapter implements ProviderAdapter {
       }
       if (evt.type === "message_start" && evt.message?.usage) {
         inputTokens = evt.message.usage.input_tokens ?? 0;
-        cachedInput = evt.message.usage.cache_read_input_tokens ?? 0;
+        cachedRead = evt.message.usage.cache_read_input_tokens ?? 0;
+        cacheWrite = evt.message.usage.cache_creation_input_tokens ?? 0;
       }
       if (evt.type === "content_block_start") {
         const blockIndex = evt.index ?? 0;
@@ -294,7 +299,12 @@ export class AnthropicAdapter implements ProviderAdapter {
     yield {
       delta: "",
       finishReason: finishReason ?? "end_turn",
-      usage: { inputTokens, cachedInputTokens: cachedInput, outputTokens },
+      usage: {
+        inputTokens,
+        cachedReadTokens: cachedRead,
+        cacheWriteTokens: cacheWrite,
+        outputTokens,
+      },
     };
   }
 }

@@ -95,6 +95,19 @@ export interface ApiKeyRow {
   enabled: boolean;
   createdAt: Date;
   lastUsedAt: Date | null;
+  // Per-dimension token counters
+  rollingInputTokensUsed: number;
+  rollingCachedReadTokensUsed: number;
+  rollingOutputTokensUsed: number;
+  weekInputTokensUsed: number;
+  weekCachedReadTokensUsed: number;
+  weekOutputTokensUsed: number;
+  monthInputTokensUsed: number;
+  monthCachedReadTokensUsed: number;
+  monthOutputTokensUsed: number;
+  rollingQuotaResetAt: Date | null;
+  weekQuotaResetAt: Date | null;
+  monthQuotaResetAt: Date | null;
 }
 
 export type UserRole = "admin" | "user";
@@ -112,10 +125,23 @@ export interface AdminUserRow {
   rollingQuota: number | null;
   weekQuota: number | null;
   monthQuota: number | null;
-  tokensUsed: number;
+  // Per-dimension token counters (weighted by multipliers)
+  rollingInputTokensUsed: number;
+  rollingCachedReadTokensUsed: number;
+  rollingOutputTokensUsed: number;
+  weekInputTokensUsed: number;
+  weekCachedReadTokensUsed: number;
+  weekOutputTokensUsed: number;
+  monthInputTokensUsed: number;
+  monthCachedReadTokensUsed: number;
+  monthOutputTokensUsed: number;
   rollingQuotaResetAt: Date | null;
   weekQuotaResetAt: Date | null;
   monthQuotaResetAt: Date | null;
+  // Quota multipliers
+  quotaMultiplierInput: number;
+  quotaMultiplierCachedRead: number;
+  quotaMultiplierOutput: number;
 }
 
 /** Resolved view of a provider with its decoded headers (apiKey still raw). */

@@ -257,7 +257,7 @@ export async function POST(req: Request): Promise<Response> {
         text: result.response.text,
         finishReason: result.response.finishReason,
         inputTokens: result.response.usage.inputTokens,
-        cachedInputTokens: result.response.usage.cachedInputTokens,
+        cachedReadTokens: result.response.usage.cachedReadTokens,
         outputTokens: result.response.usage.outputTokens,
         toolCalls: result.response.toolCalls,
         rawContent: result.response.rawMessage,

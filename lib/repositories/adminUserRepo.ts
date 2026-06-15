@@ -23,7 +23,21 @@ export const adminUserRepo = {
         rollingQuota: true,
         weekQuota: true,
         monthQuota: true,
-        tokensUsed: true,
+        rollingInputTokensUsed: true,
+        rollingCachedReadTokensUsed: true,
+        rollingOutputTokensUsed: true,
+        weekInputTokensUsed: true,
+        weekCachedReadTokensUsed: true,
+        weekOutputTokensUsed: true,
+        monthInputTokensUsed: true,
+        monthCachedReadTokensUsed: true,
+        monthOutputTokensUsed: true,
+        rollingQuotaResetAt: true,
+        weekQuotaResetAt: true,
+        monthQuotaResetAt: true,
+        quotaMultiplierInput: true,
+        quotaMultiplierCachedRead: true,
+        quotaMultiplierOutput: true,
       },
       orderBy: { username: "asc" },
     });
@@ -117,6 +131,9 @@ export const adminUserRepo = {
       rollingQuota?: number | null;
       weekQuota?: number | null;
       monthQuota?: number | null;
+      quotaMultiplierInput?: number;
+      quotaMultiplierCachedRead?: number;
+      quotaMultiplierOutput?: number;
     },
   ) {
     const data: Record<string, unknown> = {};
@@ -124,15 +141,45 @@ export const adminUserRepo = {
       data.rollingQuota = quota.rollingQuota;
     if (quota.weekQuota !== undefined) data.weekQuota = quota.weekQuota;
     if (quota.monthQuota !== undefined) data.monthQuota = quota.monthQuota;
+    if (quota.quotaMultiplierInput !== undefined)
+      data.quotaMultiplierInput = quota.quotaMultiplierInput;
+    if (quota.quotaMultiplierCachedRead !== undefined)
+      data.quotaMultiplierCachedRead = quota.quotaMultiplierCachedRead;
+    if (quota.quotaMultiplierOutput !== undefined)
+      data.quotaMultiplierOutput = quota.quotaMultiplierOutput;
     return prisma.adminUser.update({ where: { id }, data });
   },
 
-  /** Bulk increment tokensUsed for users (called by cron flusher). */
-  async flushTokenIncrements(increments: Map<string, number>): Promise<void> {
-    for (const [userId, tokens] of increments) {
-      if (tokens <= 0) continue;
+  /** Bulk increment per-dimension token counters for users (called by cron flusher). */
+  async flushDimensionIncrements(
+    increments: Map<
+      string,
+      {
+        inputTokens: number;
+        cachedReadTokens: number;
+        outputTokens: number;
+      }
+    >,
+  ): Promise<void> {
+    for (const [userId, dims] of increments) {
+      if (
+        dims.inputTokens <= 0 &&
+        dims.cachedReadTokens <= 0 &&
+        dims.outputTokens <= 0
+      )
+        continue;
       await prisma.$executeRaw`
-        UPDATE AdminUser SET tokensUsed = tokensUsed + ${tokens} WHERE id = ${userId}
+        UPDATE AdminUser
+        SET rollingInputTokensUsed      = rollingInputTokensUsed + ${dims.inputTokens},
+            rollingCachedReadTokensUsed = rollingCachedReadTokensUsed + ${dims.cachedReadTokens},
+            rollingOutputTokensUsed     = rollingOutputTokensUsed + ${dims.outputTokens},
+            weekInputTokensUsed         = weekInputTokensUsed + ${dims.inputTokens},
+            weekCachedReadTokensUsed    = weekCachedReadTokensUsed + ${dims.cachedReadTokens},
+            weekOutputTokensUsed        = weekOutputTokensUsed + ${dims.outputTokens},
+            monthInputTokensUsed        = monthInputTokensUsed + ${dims.inputTokens},
+            monthCachedReadTokensUsed   = monthCachedReadTokensUsed + ${dims.cachedReadTokens},
+            monthOutputTokensUsed       = monthOutputTokensUsed + ${dims.outputTokens}
+        WHERE id = ${userId}
       `;
     }
   },

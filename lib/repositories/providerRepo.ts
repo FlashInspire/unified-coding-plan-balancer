@@ -162,18 +162,19 @@ export const providerRepo = {
     `;
   },
 
+  /**
+   * Increment provider quota counters by pre-computed fee costs.
+   *
+   * @param inputCost   Weighted cost for input tokens
+   * @param cachedCost  Weighted cost for cached read + cache write tokens
+   * @param outputCost  Weighted cost for output tokens
+   */
   async incrementQuotaUsedByTokens(
     id: string,
-    inputTokens: number,
-    cachedInputTokens: number,
-    outputTokens: number,
-    feeRateInput: number,
-    feeRateCachedInput: number,
-    feeRateOutput: number,
+    inputCost: number,
+    cachedCost: number,
+    outputCost: number,
   ): Promise<void> {
-    const inputCost = inputTokens * feeRateInput;
-    const cachedCost = cachedInputTokens * feeRateCachedInput;
-    const outputCost = outputTokens * feeRateOutput;
     await prisma.$executeRaw`
       UPDATE Provider
       SET rollingQuotaUsed            = rollingQuotaUsed + ${inputCost},

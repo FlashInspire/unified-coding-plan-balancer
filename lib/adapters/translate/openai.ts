@@ -82,7 +82,7 @@ export function buildOpenAINonStreamResponse(args: {
   text: string;
   finishReason: string | null;
   inputTokens: number;
-  cachedInputTokens: number;
+  cachedReadTokens: number;
   outputTokens: number;
   toolCalls?: unknown;
   /** Full raw message from the upstream; used as-is to preserve provider-specific fields. */
@@ -91,7 +91,8 @@ export function buildOpenAINonStreamResponse(args: {
   // Use the raw upstream message when available so provider-specific fields
   // (reasoning_content, etc.) are preserved and can be sent back in multi-turn.
   const message: unknown =
-    args.rawMessage ?? (() => {
+    args.rawMessage ??
+    (() => {
       const m: Record<string, unknown> = { role: "assistant" };
       if (args.toolCalls != null) {
         m.content = null;
@@ -117,7 +118,7 @@ export function buildOpenAINonStreamResponse(args: {
       prompt_tokens: args.inputTokens,
       completion_tokens: args.outputTokens,
       total_tokens: args.inputTokens + args.outputTokens,
-      prompt_tokens_details: { cached_tokens: args.cachedInputTokens },
+      prompt_tokens_details: { cached_tokens: args.cachedReadTokens },
     },
   };
 }
@@ -134,7 +135,8 @@ export function buildOpenAIStreamChunk(args: {
   // Use the raw upstream delta when available to preserve provider-specific
   // fields (reasoning_content, etc.).
   const delta: unknown =
-    args.rawDelta ?? (() => {
+    args.rawDelta ??
+    (() => {
       const d: Record<string, unknown> = {};
       if (args.delta) d.content = args.delta;
       if (args.toolCallsDelta != null) d.tool_calls = args.toolCallsDelta;

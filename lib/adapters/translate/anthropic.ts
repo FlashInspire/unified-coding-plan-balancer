@@ -58,7 +58,7 @@ export function buildAnthropicNonStreamResponse(args: {
   text: string;
   finishReason: string | null;
   inputTokens: number;
-  cachedInputTokens: number;
+  cachedReadTokens: number;
   outputTokens: number;
   toolCalls?: unknown;
   /** Raw content array from upstream; used as-is to preserve all block types (thinking, etc.). */
@@ -104,7 +104,7 @@ export function buildAnthropicNonStreamResponse(args: {
     stop_sequence: null,
     usage: {
       input_tokens: args.inputTokens,
-      cache_read_input_tokens: args.cachedInputTokens,
+      cache_read_input_tokens: args.cachedReadTokens,
       output_tokens: args.outputTokens,
     },
   };

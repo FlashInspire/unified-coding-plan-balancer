@@ -23,7 +23,8 @@ export interface RequestLogRecord {
   tpsOut: number | null;
   latencyMs: number;
   inputTokens: number;
-  cachedInputTokens: number;
+  cachedReadTokens: number;
+  cacheWriteTokens: number;
   outputTokens: number;
   ip: string | null;
   userAgent: string | null;

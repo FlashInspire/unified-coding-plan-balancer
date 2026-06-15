@@ -36,7 +36,8 @@ import { getStickyProvider, setStickyProvider } from "@/lib/routing/sticky";
 import { resolveModelParams } from "@/lib/routing/resolveParams";
 import { activeRequests } from "@/lib/routing/activeRequests";
 import { env, getRuntimeSettingStringSync } from "@/lib/env";
-import { userTokenBuffer } from "@/lib/quota/keyTokenBuffer";
+import { userDimensionBuffer } from "@/lib/fee-pipeline/user-buffer";
+import { recordUsage } from "@/lib/fee-pipeline/record";
 import type {
   ApiMode,
   ModelRow,
@@ -282,7 +283,7 @@ export async function dispatchChat(
   extra?: Pick<NormalizedChatRequest, "extraParams" | "rawMessages">,
 ): Promise<DispatchSuccess> {
   // Check user token quota before doing any work.
-  if (ctx.userId && userTokenBuffer.isQuotaExceeded(ctx.userId, 1)) {
+  if (ctx.userId && userDimensionBuffer.isQuotaExceeded(ctx.userId, 1, 0, 0)) {
     throw new ApiKeyQuotaExceededError(ctx.apiKeyName);
   }
 
@@ -385,7 +386,8 @@ export async function dispatchChat(
       tpsOut: null,
       latencyMs: 0,
       inputTokens: 0,
-      cachedInputTokens: 0,
+      cachedReadTokens: 0,
+      cacheWriteTokens: 0,
       outputTokens: 0,
       ip: ctx.ip,
       apiKeyName: ctx.apiKeyName,
@@ -428,40 +430,40 @@ export async function dispatchChat(
             : null,
         latencyMs: latency,
         inputTokens: resp.usage.inputTokens,
-        cachedInputTokens: resp.usage.cachedInputTokens,
+        cachedReadTokens: resp.usage.cachedReadTokens,
+        cacheWriteTokens: resp.usage.cacheWriteTokens,
         outputTokens: resp.usage.outputTokens,
         ip: ctx.ip,
         apiKeyName: ctx.apiKeyName,
         userAgent: ctx.userAgent,
         completed: true,
       });
-      // Best effort counter accounting; request success should not fail on quota write.
-      try {
-        if (c.provider.usageMode === "token") {
-          await providerRepo.incrementQuotaUsedByTokens(
-            c.provider.id,
-            resp.usage.inputTokens,
-            resp.usage.cachedInputTokens,
-            resp.usage.outputTokens,
-            c.pm.feeRateInput ?? 1,
-            c.pm.feeRateCachedInput ?? 0.1,
-            c.pm.feeRateOutput ?? 4,
-          );
-        } else {
-          await providerRepo.incrementQuotaUsedByRequest(
-            c.provider.id,
-            c.pm.feeRateInput ?? 1,
-          );
-        }
-      } catch {
-        /* never block successful response on quota counter write */
-      }
-      // Record user token usage (buffered, flushed by cron).
-      const totalKeyTokens =
-        resp.usage.inputTokens +
-        resp.usage.cachedInputTokens +
-        resp.usage.outputTokens;
-      if (ctx.userId) userTokenBuffer.increment(ctx.userId, totalKeyTokens);
+      // Unified fee pipeline: record usage for provider, user, and API key.
+      await recordUsage({
+        inputTokens: resp.usage.inputTokens,
+        cachedReadTokens: resp.usage.cachedReadTokens,
+        cacheWriteTokens: resp.usage.cacheWriteTokens,
+        outputTokens: resp.usage.outputTokens,
+        providerId: c.provider.id,
+        apiKeyId: ctx.apiKeyId,
+        userId: ctx.userId,
+        modelId,
+        pmId: c.pm.id,
+        feeRateInput: c.pm.feeRateInput ?? 1,
+        feeRateCachedInput: c.pm.feeRateCachedInput ?? 0.1,
+        feeRateOutput: c.pm.feeRateOutput ?? 4,
+        providerUsageMode:
+          (c.provider.usageMode as "request" | "token") ?? "request",
+        ...((m) => ({
+          userMultiplierInput: m.input,
+          userMultiplierCachedRead: m.cachedRead,
+          userMultiplierOutput: m.output,
+        }))(
+          ctx.userId
+            ? userDimensionBuffer.getMultipliers(ctx.userId)
+            : { input: 1.0, cachedRead: 0.1, output: 4.0 },
+        ),
+      });
       // Record sticky routing for future requests from this key.
       // Fire-and-forget — never block the response on sticky write.
       setStickyProvider(
@@ -495,7 +497,8 @@ export async function dispatchChat(
         tpsOut: null,
         latencyMs: Date.now() - started,
         inputTokens: 0,
-        cachedInputTokens: 0,
+        cachedReadTokens: 0,
+        cacheWriteTokens: 0,
         outputTokens: 0,
         ip: ctx.ip,
         apiKeyName: ctx.apiKeyName,
@@ -544,7 +547,7 @@ export async function dispatchChatStream(
   extra?: Pick<NormalizedChatRequest, "extraParams" | "rawMessages">,
 ): Promise<DispatchStreamResult> {
   // Check user token quota before doing any work.
-  if (ctx.userId && userTokenBuffer.isQuotaExceeded(ctx.userId, 1)) {
+  if (ctx.userId && userDimensionBuffer.isQuotaExceeded(ctx.userId, 1, 0, 0)) {
     throw new ApiKeyQuotaExceededError(ctx.apiKeyName);
   }
 
@@ -650,7 +653,8 @@ export async function dispatchChatStream(
       tpsOut: null,
       latencyMs: 0,
       inputTokens: 0,
-      cachedInputTokens: 0,
+      cachedReadTokens: 0,
+      cacheWriteTokens: 0,
       outputTokens: 0,
       ip: ctx.ip,
       apiKeyName: ctx.apiKeyName,
@@ -738,7 +742,12 @@ function wrapStream(
   return {
     async *[Symbol.asyncIterator]() {
       let ttft: number | null = null;
-      let usage = { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 };
+      let usage = {
+        inputTokens: 0,
+        cachedReadTokens: 0,
+        cacheWriteTokens: 0,
+        outputTokens: 0,
+      };
       let finishReason: string | null = null;
       let status = 200;
       let errorCode: string | null = null;
@@ -801,7 +810,8 @@ function wrapStream(
             tpsOut: tps,
             latencyMs: latency,
             inputTokens: usage.inputTokens,
-            cachedInputTokens: usage.cachedInputTokens,
+            cachedReadTokens: usage.cachedReadTokens,
+            cacheWriteTokens: usage.cacheWriteTokens,
             outputTokens: outTokens,
             completed: true,
             aborted,
@@ -825,7 +835,8 @@ function wrapStream(
             tpsOut: tps,
             latencyMs: latency,
             inputTokens: usage.inputTokens,
-            cachedInputTokens: usage.cachedInputTokens,
+            cachedReadTokens: usage.cachedReadTokens,
+            cacheWriteTokens: usage.cacheWriteTokens,
             outputTokens: outTokens,
             ip: ctx.ctx.ip,
             apiKeyName: ctx.ctx.apiKeyName,
@@ -835,31 +846,36 @@ function wrapStream(
           });
         }
         if (status === 200) {
-          // Streaming request completed successfully; count one successful call.
+          // Streaming request completed successfully; count via fee pipeline.
           try {
-            if (ctx.provider.usageMode === "token") {
-              await providerRepo.incrementQuotaUsedByTokens(
-                ctx.provider.id,
-                usage.inputTokens,
-                usage.cachedInputTokens,
-                outTokens,
-                ctx.pm.feeRateInput ?? 1,
-                ctx.pm.feeRateCachedInput ?? 0.1,
-                ctx.pm.feeRateOutput ?? 4,
-              );
-            } else {
-              await providerRepo.incrementQuotaUsedByRequest(
-                ctx.provider.id,
-                ctx.pm.feeRateInput ?? 1,
-              );
-            }
+            await recordUsage({
+              inputTokens: usage.inputTokens,
+              cachedReadTokens: usage.cachedReadTokens,
+              cacheWriteTokens: usage.cacheWriteTokens,
+              outputTokens: outTokens,
+              providerId: ctx.provider.id,
+              apiKeyId: ctx.ctx.apiKeyId,
+              userId: ctx.ctx.userId,
+              modelId: ctx.modelId,
+              pmId: ctx.pm.id,
+              feeRateInput: ctx.pm.feeRateInput ?? 1,
+              feeRateCachedInput: ctx.pm.feeRateCachedInput ?? 0.1,
+              feeRateOutput: ctx.pm.feeRateOutput ?? 4,
+              providerUsageMode:
+                (ctx.provider.usageMode as "request" | "token") ?? "request",
+              ...((m) => ({
+                userMultiplierInput: m.input,
+                userMultiplierCachedRead: m.cachedRead,
+                userMultiplierOutput: m.output,
+              }))(
+                ctx.ctx.userId
+                  ? userDimensionBuffer.getMultipliers(ctx.ctx.userId)
+                  : { input: 1.0, cachedRead: 0.1, output: 4.0 },
+              ),
+            });
           } catch {
             /* never block stream completion on quota counter write */
           }
-          // Record user token usage (buffered, flushed by cron).
-          const totalKeyTokens =
-            usage.inputTokens + usage.cachedInputTokens + outTokens;
-          if (ctx.ctx.userId) userTokenBuffer.increment(ctx.ctx.userId, totalKeyTokens);
           // Record sticky routing for future requests from this key.
           // Fire-and-forget — never block the stream on sticky write.
           setStickyProvider(
@@ -933,7 +949,8 @@ export async function dispatchDirectChat(
     tpsOut: null,
     latencyMs: 0,
     inputTokens: 0,
-    cachedInputTokens: 0,
+    cachedReadTokens: 0,
+    cacheWriteTokens: 0,
     outputTokens: 0,
     ip: ctx.ip,
     apiKeyName: ctx.apiKeyName,
@@ -964,33 +981,40 @@ export async function dispatchDirectChat(
           : null,
       latencyMs: latency,
       inputTokens: resp.usage.inputTokens,
-      cachedInputTokens: resp.usage.cachedInputTokens,
+      cachedReadTokens: resp.usage.cachedReadTokens,
+      cacheWriteTokens: resp.usage.cacheWriteTokens,
       outputTokens: resp.usage.outputTokens,
       ip: ctx.ip,
       apiKeyName: ctx.apiKeyName,
       userAgent: ctx.userAgent,
       completed: true,
     });
-    try {
-      if (c.provider.usageMode === "token") {
-        await providerRepo.incrementQuotaUsedByTokens(
-          c.provider.id,
-          resp.usage.inputTokens,
-          resp.usage.cachedInputTokens,
-          resp.usage.outputTokens,
-          c.pm.feeRateInput ?? 1,
-          c.pm.feeRateCachedInput ?? 0.1,
-          c.pm.feeRateOutput ?? 4,
-        );
-      } else {
-        await providerRepo.incrementQuotaUsedByRequest(
-          c.provider.id,
-          c.pm.feeRateInput ?? 1,
-        );
-      }
-    } catch {
-      /* never block */
-    }
+    // Unified fee pipeline.
+    await recordUsage({
+      inputTokens: resp.usage.inputTokens,
+      cachedReadTokens: resp.usage.cachedReadTokens,
+      cacheWriteTokens: resp.usage.cacheWriteTokens,
+      outputTokens: resp.usage.outputTokens,
+      providerId: c.provider.id,
+      apiKeyId: ctx.apiKeyId,
+      userId: ctx.userId,
+      modelId,
+      pmId: c.pm.id,
+      feeRateInput: c.pm.feeRateInput ?? 1,
+      feeRateCachedInput: c.pm.feeRateCachedInput ?? 0.1,
+      feeRateOutput: c.pm.feeRateOutput ?? 4,
+      providerUsageMode:
+        (c.provider.usageMode as "request" | "token") ?? "request",
+      ...((m) => ({
+        userMultiplierInput: m.input,
+        userMultiplierCachedRead: m.cachedRead,
+        userMultiplierOutput: m.output,
+      }))(
+        ctx.userId
+          ? userDimensionBuffer.getMultipliers(ctx.userId)
+          : { input: 1.0, cachedRead: 0.1, output: 4.0 },
+      ),
+    }).catch(() => {});
     return { response: resp, provider: c.provider, pm: c.pm, params };
   } catch (err) {
     activeRequests.decr(c.provider.id);
@@ -1014,7 +1038,8 @@ export async function dispatchDirectChat(
       tpsOut: null,
       latencyMs: Date.now() - started,
       inputTokens: 0,
-      cachedInputTokens: 0,
+      cachedReadTokens: 0,
+      cacheWriteTokens: 0,
       outputTokens: 0,
       ip: ctx.ip,
       apiKeyName: ctx.apiKeyName,
@@ -1087,7 +1112,8 @@ export async function dispatchDirectChatStream(
     tpsOut: null,
     latencyMs: 0,
     inputTokens: 0,
-    cachedInputTokens: 0,
+    cachedReadTokens: 0,
+    cacheWriteTokens: 0,
     outputTokens: 0,
     ip: ctx.ip,
     apiKeyName: ctx.apiKeyName,

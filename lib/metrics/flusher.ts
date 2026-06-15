@@ -59,7 +59,8 @@ export function logRequestUpdate(
     tpsOut?: number | null;
     latencyMs?: number;
     inputTokens?: number;
-    cachedInputTokens?: number;
+    cachedReadTokens?: number;
+    cacheWriteTokens?: number;
     outputTokens?: number;
     errorCode?: string | null;
     completed?: boolean;
@@ -87,7 +88,7 @@ export function logRequestUpdate(
     fields.tpsOut ?? null,
     fields.latencyMs ?? null,
     fields.inputTokens ?? null,
-    fields.cachedInputTokens ?? null,
+    fields.cachedReadTokens ?? null,
     fields.outputTokens ?? null,
     fields.errorCode ?? null,
     fields.completed != null ? (fields.completed ? 1 : 0) : null,
@@ -146,7 +147,7 @@ export function flushOnce(): number {
             r.tpsOut,
             r.latencyMs,
             r.inputTokens,
-            r.cachedInputTokens,
+            r.cachedReadTokens,
             r.outputTokens,
             r.ip,
             r.userAgent,
@@ -184,7 +185,7 @@ export function flushOnce(): number {
             r.tpsOut,
             r.latencyMs,
             r.inputTokens,
-            r.cachedInputTokens,
+            r.cachedReadTokens,
             r.outputTokens,
             r.completed != null ? (r.completed ? 1 : 0) : null,
             r.aborted != null ? (r.aborted ? 1 : 0) : null,
