@@ -9,14 +9,15 @@
  *   pnpm tsx scripts/set-admin.ts clarkson --password my-secret
  */
 import "dotenv/config";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 // ── arg parse ────────────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
 if (args.length === 0 || args[0] === "--help") {
-  console.log("Usage: pnpm tsx scripts/set-admin.ts <username> [--password <pw>]");
+  console.log(
+    "Usage: pnpm tsx scripts/set-admin.ts <username> [--password <pw>]",
+  );
   process.exit(1);
 }
 
@@ -28,10 +29,8 @@ for (let i = 1; i < args.length; i++) {
   }
 }
 
-// ── prisma init (same pattern as lib/prisma.ts) ─────────────────────────────
-const dbUrl = process.env.DATABASE_URL ?? "file:./data/u22x.db";
-const adapter = new PrismaBetterSqlite3({ url: dbUrl });
-const prisma = new PrismaClient({ adapter });
+// ── prisma init ──────────────────────────────────────────────────────────────
+const prisma = new PrismaClient();
 
 async function main() {
   // Look for existing user

@@ -25,6 +25,6 @@ export async function GET(req: NextRequest): Promise<Response> {
     }
   }
 
-  const rows = usageInMonth(q.month, apiKeyIds);
+  const rows = await usageInMonth(q.month, apiKeyIds);
   return Response.json({ data: rows });
 }

@@ -35,8 +35,6 @@ const schema = z.object({
   METRICS_FLUSH_BATCH_SIZE: z.coerce.number().int().positive().default(500),
   METRICS_BUFFER_MAX: z.coerce.number().int().positive().default(5_000),
 
-  SQLITE_POOL_MAX: z.coerce.number().int().positive().default(16),
-
   /** Sticky routing TTL in milliseconds. Default 5 minutes. */
   STICKY_TTL_MS: z.coerce.number().int().positive().default(300_000),
 

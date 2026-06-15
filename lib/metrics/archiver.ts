@@ -1,70 +1,57 @@
 /**
- * Daily archiver: deletes log shards older than LOG_RETENTION_DAYS and
- * monthly stat shards older than STAT_RETENTION_MONTHS.
- * (Down-sampling into archive/YYYY.sqlite is left as a TODO for v1.)
+ * Archiver: deletes old request_log, usage_minute, and aggregate_report rows
+ * based on retention policies. Called by the cron endpoint once per day.
  */
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { env } from "@/lib/env";
-import { listShards } from "@/lib/metrics/shardStore";
+import { prisma } from "@/lib/prisma";
+import { getRuntimeSettingSync } from "@/lib/env";
 
-function purgeLogs(): number {
-  const cutoff = new Date(Date.now() - env.LOG_RETENTION_DAYS * 86_400_000);
-  const cutoffKey = cutoff.toISOString().slice(0, 10);
-  let removed = 0;
-  for (const key of listShards("log")) {
-    if (key < cutoffKey) {
-      // Inline literal path at every fs.* call site so Turbopack NFT can
-      // statically scope tracing to <cwd>/data/ instead of the whole project.
-      for (const suffix of ["", "-wal", "-shm"]) {
-        try {
-          if (
-            fs.existsSync(
-              path.join(process.cwd(), "data", "logs", `${key}.sqlite${suffix}`),
-            )
-          )
-            fs.unlinkSync(
-              path.join(process.cwd(), "data", "logs", `${key}.sqlite${suffix}`),
-            );
-        } catch {
-          /* ignore */
-        }
-      }
-      removed++;
-    }
-  }
-  return removed;
-}
+export async function archiveOnce(): Promise<{
+  logs: number;
+  stats: number;
+  reports: number;
+}> {
+  const now = Date.now();
 
-function purgeStats(): number {
-  const cutoff = new Date();
-  cutoff.setUTCMonth(cutoff.getUTCMonth() - env.STAT_RETENTION_MONTHS);
-  const cutoffKey = cutoff.toISOString().slice(0, 7);
-  let removed = 0;
-  for (const key of listShards("stat")) {
-    if (key < cutoffKey) {
-      // Inline literal path at every fs.* call site so Turbopack NFT can
-      // statically scope tracing to <cwd>/data/ instead of the whole project.
-      for (const suffix of ["", "-wal", "-shm"]) {
-        try {
-          if (
-            fs.existsSync(
-              path.join(process.cwd(), "data", "stats", `${key}.sqlite${suffix}`),
-            )
-          )
-            fs.unlinkSync(
-              path.join(process.cwd(), "data", "stats", `${key}.sqlite${suffix}`),
-            );
-        } catch {
-          /* ignore */
-        }
-      }
-      removed++;
-    }
-  }
-  return removed;
-}
+  // ── Purge request_log ────────────────────────────────────────────
+  const logRetentionDays = getRuntimeSettingSync("LOG_RETENTION_DAYS");
+  const logCutoffMs = BigInt(now - logRetentionDays * 86_400_000);
+  const logResult = await prisma.requestLog.deleteMany({
+    where: { ts: { lt: logCutoffMs } },
+  });
 
-export function archiveOnce(): { logs: number; stats: number } {
-  return { logs: purgeLogs(), stats: purgeStats() };
+  // ── Purge usage_minute ───────────────────────────────────────────
+  const statRetentionMonths = getRuntimeSettingSync("STAT_RETENTION_MONTHS");
+  const statCutoffDate = new Date();
+  statCutoffDate.setUTCMonth(
+    statCutoffDate.getUTCMonth() - statRetentionMonths,
+  );
+  const statCutoffMinute = Math.floor(statCutoffDate.getTime() / 60_000);
+  const statResult = await prisma.usageMinute.deleteMany({
+    where: { minute: { lt: statCutoffMinute } },
+  });
+
+  // ── Purge aggregate_report ───────────────────────────────────────
+  // Hour reports: retain for LOG_RETENTION_DAYS
+  const hourCutoffMs = BigInt(now - logRetentionDays * 86_400_000);
+  // Day/week/month reports: retain for STAT_RETENTION_MONTHS
+  const reportCutoffMs = BigInt(statCutoffDate.getTime());
+
+  const hourResult = await prisma.aggregateReport.deleteMany({
+    where: {
+      granularity: "hour",
+      periodStart: { lt: hourCutoffMs },
+    },
+  });
+  const otherResult = await prisma.aggregateReport.deleteMany({
+    where: {
+      granularity: { in: ["day", "week", "month"] },
+      periodStart: { lt: reportCutoffMs },
+    },
+  });
+
+  return {
+    logs: logResult.count,
+    stats: statResult.count,
+    reports: hourResult.count + otherResult.count,
+  };
 }

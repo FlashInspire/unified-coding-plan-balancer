@@ -38,6 +38,7 @@ import { activeRequests } from "@/lib/routing/activeRequests";
 import { env, getRuntimeSettingStringSync } from "@/lib/env";
 import { userDimensionBuffer } from "@/lib/fee-pipeline/user-buffer";
 import { recordUsage } from "@/lib/fee-pipeline/record";
+import { updateLatestReports } from "@/lib/metrics/liveReportUpdater";
 import type {
   ApiMode,
   ModelRow,
@@ -195,22 +196,25 @@ function emitMetrics(record: RequestLogRecord): void {
 }
 
 /** Immediately write a partial update to an in-flight log row. */
-function emitMetricsUpdate(
+async function emitMetricsUpdate(
   requestId: number,
   ts: number,
   fields: Parameters<typeof logRequestUpdate>[2],
-): void {
+): Promise<void> {
   try {
-    logRequestUpdate(requestId, ts, fields);
+    await logRequestUpdate(requestId, ts, fields);
   } catch {
     /* never block on metrics */
   }
 }
 
 /** Insert an in-flight log row and return the row ID. Best-effort. */
-function emitMetricsStart(record: RequestLogRecord): number | null {
+async function emitMetricsStart(
+  record: RequestLogRecord,
+): Promise<number | null> {
   try {
-    return logRequestStart(record);
+    const id = await logRequestStart(record);
+    return id != null ? Number(id) : null;
   } catch {
     return null;
   }
@@ -370,7 +374,7 @@ export async function dispatchChat(
     };
     const started = Date.now();
     activeRequests.incr(c.provider.id);
-    const requestId = emitMetricsStart({
+    const requestId = await emitMetricsStart({
       ts: started,
       apiKeyId: ctx.apiKeyId,
       modelId,
@@ -463,6 +467,22 @@ export async function dispatchChat(
             ? userDimensionBuffer.getMultipliers(ctx.userId)
             : { input: 1.0, cachedRead: 0.1, output: 4.0 },
         ),
+      });
+      // Update latest aggregate report rows for all 4 periods.
+      void updateLatestReports({
+        providerId: c.provider.id,
+        modelId,
+        apiKeyId: ctx.apiKeyId,
+        inputTokens: resp.usage.inputTokens,
+        cachedInputTokens: resp.usage.cachedReadTokens + resp.usage.cacheWriteTokens,
+        outputTokens: resp.usage.outputTokens,
+        ttftMs: latency,
+        tpsOut:
+          resp.usage.outputTokens > 0 && latency > 0
+            ? (resp.usage.outputTokens / latency) * 1000
+            : null,
+        status: 200,
+        ts: started,
       });
       // Record sticky routing for future requests from this key.
       // Fire-and-forget — never block the response on sticky write.
@@ -637,7 +657,7 @@ export async function dispatchChatStream(
     };
     const started = Date.now();
     activeRequests.incr(c.provider.id);
-    const requestId = emitMetricsStart({
+    const requestId = await emitMetricsStart({
       ts: started,
       apiKeyId: ctx.apiKeyId,
       modelId,
@@ -694,7 +714,7 @@ export async function dispatchChatStream(
       // Close out the in-flight row for this failed attempt so it never stays
       // stuck at status=0 (InFlight). Each candidate attempt owns its own row.
       if (requestId != null) {
-        emitMetricsUpdate(requestId, started, {
+        await emitMetricsUpdate(requestId, started, {
           status: status || 500,
           errorCode: message.slice(0, 200),
           latencyMs: Date.now() - started,
@@ -759,7 +779,7 @@ function wrapStream(
             // Immediately update the log row with TTFT so it's visible
             // before the stream completes.
             if (ctx.requestId != null) {
-              emitMetricsUpdate(ctx.requestId, ctx.started, {
+              await emitMetricsUpdate(ctx.requestId, ctx.started, {
                 status: 200,
                 ttftMs: ttft,
               });
@@ -803,7 +823,7 @@ function wrapStream(
           // must leave status=0 (InFlight) immediately with its final HTTP
           // status, rather than relying on a buffered flush that can be
           // delayed or lost on restart.
-          emitMetricsUpdate(ctx.requestId, ctx.started, {
+          await emitMetricsUpdate(ctx.requestId, ctx.started, {
             status,
             errorCode,
             ttftMs: ttft,
@@ -876,6 +896,19 @@ function wrapStream(
           } catch {
             /* never block stream completion on quota counter write */
           }
+          // Update latest aggregate report rows for all 4 periods.
+          void updateLatestReports({
+            providerId: ctx.provider.id,
+            modelId: ctx.modelId,
+            apiKeyId: ctx.ctx.apiKeyId,
+            inputTokens: usage.inputTokens,
+            cachedInputTokens: usage.cachedReadTokens + usage.cacheWriteTokens,
+            outputTokens: outTokens,
+            ttftMs: ttft,
+            tpsOut: tps,
+            status: 200,
+            ts: ctx.started,
+          });
           // Record sticky routing for future requests from this key.
           // Fire-and-forget — never block the stream on sticky write.
           setStickyProvider(
@@ -933,7 +966,7 @@ export async function dispatchDirectChat(
   };
   const started = Date.now();
   activeRequests.incr(c.provider.id);
-  const requestId = emitMetricsStart({
+  const requestId = await emitMetricsStart({
     ts: started,
     apiKeyId: ctx.apiKeyId,
     modelId,
@@ -1015,6 +1048,22 @@ export async function dispatchDirectChat(
           : { input: 1.0, cachedRead: 0.1, output: 4.0 },
       ),
     }).catch(() => {});
+    // Update latest aggregate report rows for all 4 periods.
+    void updateLatestReports({
+      providerId: c.provider.id,
+      modelId,
+      apiKeyId: ctx.apiKeyId,
+      inputTokens: resp.usage.inputTokens,
+      cachedInputTokens: resp.usage.cachedReadTokens + resp.usage.cacheWriteTokens,
+      outputTokens: resp.usage.outputTokens,
+      ttftMs: latency,
+      tpsOut:
+        resp.usage.outputTokens > 0 && latency > 0
+          ? (resp.usage.outputTokens / latency) * 1000
+          : null,
+      status: 200,
+      ts: started,
+    });
     return { response: resp, provider: c.provider, pm: c.pm, params };
   } catch (err) {
     activeRequests.decr(c.provider.id);
@@ -1096,7 +1145,7 @@ export async function dispatchDirectChatStream(
   };
   const started = Date.now();
   activeRequests.incr(c.provider.id);
-  const requestId = emitMetricsStart({
+  const requestId = await emitMetricsStart({
     ts: started,
     apiKeyId: ctx.apiKeyId,
     modelId,
@@ -1143,7 +1192,7 @@ export async function dispatchDirectChatStream(
     // stuck at status=0 (InFlight).
     if (requestId != null) {
       const status = err instanceof UpstreamError ? err.status : 0;
-      emitMetricsUpdate(requestId, started, {
+      await emitMetricsUpdate(requestId, started, {
         status: status || 500,
         errorCode: err instanceof Error ? err.message.slice(0, 200) : "Unknown",
         latencyMs: Date.now() - started,

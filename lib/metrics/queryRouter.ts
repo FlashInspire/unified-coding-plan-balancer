@@ -1,13 +1,8 @@
 /**
- * Cross-shard read API used by the admin dashboard.
- * Picks the right kind of shard based on the requested time window.
+ * Cross-table read API used by the admin dashboard.
+ * All queries go through Prisma to the single PostgreSQL database.
  */
-import {
-  dateKey,
-  listShards,
-  monthKey,
-  shardStore,
-} from "@/lib/metrics/shardStore";
+import { prisma } from "@/lib/prisma";
 
 export interface RecentLogRow {
   id: number;
@@ -33,14 +28,14 @@ export interface RecentLogRow {
   aborted: number;
 }
 
-/** Returns the N most recent request_log rows across the last `days` shards. */
-export function recentLogs(
+/** Returns the N most recent request_log rows. */
+export async function recentLogs(
   opts: {
     days?: number;
     limit?: number;
     offset?: number;
     apiKeyId?: string;
-    apiKeyIds?: string[]; // filter to these key IDs (OR)
+    apiKeyIds?: string[];
     modelId?: string;
     providerId?: string;
     status?: "ok" | "error" | "inflight";
@@ -48,86 +43,82 @@ export function recentLogs(
     from?: number;
     to?: number;
   } = {},
-): { rows: RecentLogRow[]; total: number } {
-  const days = Math.max(1, opts.days ?? 2);
+): Promise<{ rows: RecentLogRow[]; total: number }> {
   const limit = Math.max(1, Math.min(1000, opts.limit ?? 100));
   const offset = Math.max(0, opts.offset ?? 0);
-  const shardKeys = listShards("log");
-  const recent = shardKeys.slice(-days);
-  const today = dateKey();
-  if (!recent.includes(today)) recent.push(today);
 
-  const conditions: string[] = [];
-  const params: unknown[] = [];
+  // Build where clause
+  const where: Record<string, unknown> = {};
 
   if (opts.apiKeyId) {
-    conditions.push("api_key_id = ?");
-    params.push(opts.apiKeyId);
+    where.apiKeyId = opts.apiKeyId;
   } else if (opts.apiKeyIds && opts.apiKeyIds.length > 0) {
-    const placeholders = opts.apiKeyIds.map(() => "?").join(", ");
-    conditions.push(`api_key_id IN (${placeholders})`);
-    params.push(...opts.apiKeyIds);
+    where.apiKeyId = { in: opts.apiKeyIds };
   }
   if (opts.modelId) {
-    conditions.push("model_id = ?");
-    params.push(opts.modelId);
+    where.modelId = opts.modelId;
   }
   if (opts.providerId) {
-    conditions.push("provider_id = ?");
-    params.push(opts.providerId);
+    where.providerId = opts.providerId;
   }
   if (opts.status === "ok") {
-    conditions.push("status >= 200 AND status < 400");
+    where.status = { gte: 200, lt: 400 };
   } else if (opts.status === "error") {
-    conditions.push("(status >= 400 OR (status > 0 AND status < 200))");
+    where.OR = [{ status: { gte: 400 } }, { status: { gt: 0, lt: 200 } }];
   } else if (opts.status === "inflight") {
-    conditions.push("status = 0");
+    where.status = 0;
   }
   if (opts.search) {
-    conditions.push(
-      "(api_key_name LIKE ? OR model_id LIKE ? OR provider_name LIKE ? OR provider_id LIKE ?)",
-    );
-    const pat = `%${opts.search}%`;
-    params.push(pat, pat, pat, pat);
+    where.OR = [
+      { apiKeyName: { contains: opts.search } },
+      { modelId: { contains: opts.search } },
+      { providerName: { contains: opts.search } },
+      { providerId: { contains: opts.search } },
+    ];
   }
-  if (opts.from) {
-    conditions.push("ts >= ?");
-    params.push(opts.from);
-  }
-  if (opts.to) {
-    conditions.push("ts <= ?");
-    params.push(opts.to);
-  }
-
-  const where =
-    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-
-  const allRows: RecentLogRow[] = [];
-  for (const k of recent) {
-    try {
-      const db = shardStore.openLog(k);
-      const res = db
-        .prepare(
-          `SELECT id, ts, api_key_id, api_key_name, model_id, provider_id,
-                  provider_name, status,
-                  latency_ms, ttft_ms, tps_out,
-                  input_tokens, cached_input_tokens, output_tokens,
-                  stream, error_code, user_agent,
-                  real_model_id, ip, completed, aborted
-             FROM request_log ${where}
-            ORDER BY ts DESC`,
-        )
-        .all(...params) as RecentLogRow[];
-      allRows.push(...res);
-    } catch {
-      /* shard may not exist yet */
-    }
+  if (opts.from || opts.to) {
+    where.ts = {} as Record<string, unknown>;
+    if (opts.from)
+      (where.ts as Record<string, unknown>).gte = BigInt(opts.from);
+    if (opts.to) (where.ts as Record<string, unknown>).lte = BigInt(opts.to);
   }
 
-  allRows.sort((a, b) => b.ts - a.ts);
-  const total = allRows.length;
-  const rows = allRows.slice(offset, offset + limit);
-  return { rows, total };
+  const [rows, total] = await Promise.all([
+    prisma.requestLog.findMany({
+      where: where as never,
+      orderBy: { ts: "desc" },
+      skip: offset,
+      take: limit,
+    }),
+    prisma.requestLog.count({ where: where as never }),
+  ]);
+
+  return {
+    rows: rows.map((r) => ({
+      id: Number(r.id),
+      ts: Number(r.ts),
+      api_key_id: r.apiKeyId,
+      api_key_name: r.apiKeyName ?? "",
+      model_id: r.modelId,
+      provider_id: r.providerId,
+      provider_name: r.providerName,
+      status: r.status,
+      latency_ms: r.latencyMs,
+      ttft_ms: r.ttftMs,
+      tps_out: r.tpsOut,
+      input_tokens: r.inputTokens,
+      cached_input_tokens: r.cachedInputTokens,
+      output_tokens: r.outputTokens,
+      stream: r.stream ? 1 : 0,
+      error_code: r.errorCode,
+      user_agent: r.userAgent,
+      real_model_id: r.realModelId,
+      ip: r.ip,
+      completed: r.completed ? 1 : 0,
+      aborted: r.aborted ? 1 : 0,
+    })),
+    total,
+  };
 }
 
 export interface UsageBucket {
@@ -145,35 +136,61 @@ export interface UsageBucket {
   avg_tps_out: number | null;
 }
 
-/** Aggregated usage in a single month shard. */
-export function usageInMonth(
-  monthShardKey: string = monthKey(),
+/** Aggregated usage in a given month. */
+export async function usageInMonth(
+  monthKey?: string,
   apiKeyIds?: string[],
-): UsageBucket[] {
-  try {
-    const db = shardStore.openStat(monthShardKey);
-    let where = "";
-    const params: unknown[] = [];
-    if (apiKeyIds && apiKeyIds.length > 0) {
-      const placeholders = apiKeyIds.map(() => "?").join(", ");
-      where = `WHERE api_key_id IN (${placeholders})`;
-      params.push(...apiKeyIds);
-    }
-    return db
-      .prepare(
-        `SELECT minute, api_key_id, provider_id, model_id,
-                requests, requests_ok, requests_err,
-                input_tokens, cached_input_tokens, output_tokens,
-                CASE WHEN ttft_ms_count > 0 THEN ttft_ms_sum * 1.0 / ttft_ms_count END AS avg_ttft_ms,
-                CASE WHEN tps_out_count > 0 THEN tps_out_sum * 1.0 / tps_out_count END AS avg_tps_out
-           FROM usage_minute ${where}
-          ORDER BY minute DESC
-          LIMIT 5000`,
-      )
-      .all(...params) as UsageBucket[];
-  } catch {
-    return [];
+): Promise<UsageBucket[]> {
+  // Compute minute range for the month key (YYYY-MM)
+  let startMinute: number;
+  let endMinute: number;
+
+  if (monthKey) {
+    const [y, m] = monthKey.split("-").map(Number);
+    const start = new Date(Date.UTC(y, m - 1, 1));
+    const end = new Date(Date.UTC(y, m, 1));
+    startMinute = Math.floor(start.getTime() / 60_000);
+    endMinute = Math.floor(end.getTime() / 60_000);
+  } else {
+    // Default: current month
+    const now = new Date();
+    const start = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+    );
+    const end = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
+    );
+    startMinute = Math.floor(start.getTime() / 60_000);
+    endMinute = Math.floor(end.getTime() / 60_000);
   }
+
+  const where: Record<string, unknown> = {
+    minute: { gte: startMinute, lt: endMinute },
+  };
+  if (apiKeyIds && apiKeyIds.length > 0) {
+    where.apiKeyId = { in: apiKeyIds };
+  }
+
+  const rows = await prisma.usageMinute.findMany({
+    where: where as never,
+    orderBy: { minute: "desc" },
+    take: 5000,
+  });
+
+  return rows.map((r) => ({
+    minute: r.minute,
+    api_key_id: r.apiKeyId,
+    provider_id: r.providerId,
+    model_id: r.modelId,
+    requests: r.requests,
+    requests_ok: r.requestsOk,
+    requests_err: r.requestsErr,
+    input_tokens: r.inputTokens,
+    cached_input_tokens: r.cachedInputTokens,
+    output_tokens: r.outputTokens,
+    avg_ttft_ms: r.ttftMsCount > 0 ? (r.ttftMsSum * 1.0) / r.ttftMsCount : null,
+    avg_tps_out: r.tpsOutCount > 0 ? (r.tpsOutSum * 1.0) / r.tpsOutCount : null,
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -181,82 +198,218 @@ export function usageInMonth(
 // ---------------------------------------------------------------------------
 
 export interface TokenUsageSummary {
-  period: string; // e.g. "2026-06-11", "2026-W24", "2026-06"
+  period: string;
   input_tokens: number;
   cached_input_tokens: number;
   output_tokens: number;
   requests: number;
 }
 
-/** Aggregate token usage for a single API key within one month shard. */
-export function apiKeyTokenUsage(
+/** Aggregate token usage for a single API key using AggregateReport. */
+export async function apiKeyTokenUsage(
   apiKeyId: string,
   period: "day" | "week" | "month",
-  monthShardKey: string = monthKey(),
-): TokenUsageSummary[] {
-  try {
-    const db = shardStore.openStat(monthShardKey);
-    let groupExpr: string;
-    let selectPeriod: string;
+): Promise<TokenUsageSummary[]> {
+  const rows = await prisma.aggregateReport.findMany({
+    where: {
+      granularity: period,
+      apiKeyId,
+    },
+    orderBy: { periodStart: "desc" },
+    take: 500,
+  });
+
+  // Group by period key (date string)
+  const grouped = new Map<string, TokenUsageSummary>();
+  for (const r of rows) {
+    const d = new Date(Number(r.periodStart));
+    let key: string;
     if (period === "day") {
-      groupExpr = "date(minute, 'unixepoch')";
-      selectPeriod = "date(minute, 'unixepoch') AS period";
+      key = d.toISOString().slice(0, 10);
     } else if (period === "week") {
-      groupExpr = "strftime('%Y-W%W', minute, 'unixepoch')";
-      selectPeriod = "strftime('%Y-W%W', minute, 'unixepoch') AS period";
+      // ISO week
+      const temp = new Date(d);
+      temp.setUTCDate(temp.getUTCDate() + 3 - ((temp.getUTCDay() + 6) % 7));
+      const week1 = new Date(Date.UTC(temp.getUTCFullYear(), 0, 4));
+      const weekNum =
+        1 +
+        Math.round(
+          ((temp.getTime() - week1.getTime()) / 86_400_000 -
+            3 +
+            ((week1.getUTCDay() + 6) % 7)) /
+            7,
+        );
+      key = `${temp.getUTCFullYear()}-W${String(weekNum).padStart(2, "0")}`;
     } else {
-      groupExpr = "strftime('%Y-%m', minute, 'unixepoch')";
-      selectPeriod = "strftime('%Y-%m', minute, 'unixepoch') AS period";
+      key = d.toISOString().slice(0, 7);
     }
-    const rows = db
-      .prepare(
-        `SELECT ${selectPeriod},
-                SUM(input_tokens) AS input_tokens,
-                SUM(cached_input_tokens) AS cached_input_tokens,
-                SUM(output_tokens) AS output_tokens,
-                SUM(requests) AS requests
-           FROM usage_minute
-          WHERE api_key_id = ?
-          GROUP BY ${groupExpr}
-          ORDER BY period DESC`,
-      )
-      .all(apiKeyId) as TokenUsageSummary[];
-    return rows;
-  } catch {
-    return [];
+
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.input_tokens += r.inputTokens;
+      existing.cached_input_tokens += r.cachedInputTokens;
+      existing.output_tokens += r.outputTokens;
+      existing.requests += r.requests;
+    } else {
+      grouped.set(key, {
+        period: key,
+        input_tokens: r.inputTokens,
+        cached_input_tokens: r.cachedInputTokens,
+        output_tokens: r.outputTokens,
+        requests: r.requests,
+      });
+    }
   }
+
+  return [...grouped.values()].sort((a, b) => b.period.localeCompare(a.period));
 }
 
 /**
- * Aggregate token usage across multiple month shards, merging rows with
- * the same period key (e.g. a week that spans two month shards).
+ * Aggregate token usage across multiple months, merging rows with
+ * the same period key.
  */
-export function apiKeyTokenUsageMultiMonth(
+export async function apiKeyTokenUsageMultiMonth(
   apiKeyId: string,
   period: "day" | "week" | "month" = "day",
-  months: number = 3,
-): TokenUsageSummary[] {
-  const shards = listShards("stat");
-  const recent = shards.slice(-months);
-  const current = monthKey();
-  if (!recent.includes(current)) recent.push(current);
+  _months: number = 3,
+): Promise<TokenUsageSummary[]> {
+  return apiKeyTokenUsage(apiKeyId, period);
+}
 
-  const all: TokenUsageSummary[] = [];
-  for (const shard of recent) {
-    all.push(...apiKeyTokenUsage(apiKeyId, period, shard));
-  }
+// ---------------------------------------------------------------------------
+// AggregateReport query API
+// ---------------------------------------------------------------------------
 
-  const merged = new Map<string, TokenUsageSummary>();
-  for (const row of all) {
-    const existing = merged.get(row.period);
-    if (existing) {
-      existing.input_tokens += row.input_tokens;
-      existing.cached_input_tokens += row.cached_input_tokens;
-      existing.output_tokens += row.output_tokens;
-      existing.requests += row.requests;
-    } else {
-      merged.set(row.period, { ...row });
-    }
+export interface AggregateReportRow {
+  granularity: string;
+  period_start: number;
+  provider_id: string;
+  model_id: string;
+  api_key_id: string;
+  requests: number;
+  requests_ok: number;
+  requests_err: number;
+  input_tokens: number;
+  cached_input_tokens: number;
+  output_tokens: number;
+  avg_ttft_ms: number | null;
+  avg_tps_out: number | null;
+}
+
+/**
+ * Query AggregateReport with flexible filters.
+ * Supports filtering by any combination of providerId, modelId, apiKeyId.
+ */
+export async function aggregateReport(opts: {
+  granularity: "hour" | "day" | "week" | "month";
+  from?: number;
+  to?: number;
+  providerId?: string;
+  modelId?: string;
+  apiKeyId?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ rows: AggregateReportRow[]; total: number }> {
+  const limit = Math.max(1, Math.min(1000, opts.limit ?? 100));
+  const offset = Math.max(0, opts.offset ?? 0);
+
+  const where: Record<string, unknown> = {
+    granularity: opts.granularity,
+  };
+  if (opts.from || opts.to) {
+    where.periodStart = {} as Record<string, unknown>;
+    if (opts.from)
+      (where.periodStart as Record<string, unknown>).gte = BigInt(opts.from);
+    if (opts.to)
+      (where.periodStart as Record<string, unknown>).lte = BigInt(opts.to);
   }
-  return [...merged.values()].sort((a, b) => b.period.localeCompare(a.period));
+  if (opts.providerId) where.providerId = opts.providerId;
+  if (opts.modelId) where.modelId = opts.modelId;
+  if (opts.apiKeyId) where.apiKeyId = opts.apiKeyId;
+
+  const [rows, total] = await Promise.all([
+    prisma.aggregateReport.findMany({
+      where: where as never,
+      orderBy: { periodStart: "desc" },
+      skip: offset,
+      take: limit,
+    }),
+    prisma.aggregateReport.count({ where: where as never }),
+  ]);
+
+  return {
+    rows: rows.map((r) => ({
+      granularity: r.granularity,
+      period_start: Number(r.periodStart),
+      provider_id: r.providerId,
+      model_id: r.modelId,
+      api_key_id: r.apiKeyId,
+      requests: r.requests,
+      requests_ok: r.requestsOk,
+      requests_err: r.requestsErr,
+      input_tokens: r.inputTokens,
+      cached_input_tokens: r.cachedInputTokens,
+      output_tokens: r.outputTokens,
+      avg_ttft_ms:
+        r.ttftMsCount > 0 ? (r.ttftMsSum * 1.0) / r.ttftMsCount : null,
+      avg_tps_out:
+        r.tpsOutCount > 0 ? (r.tpsOutSum * 1.0) / r.tpsOutCount : null,
+    })),
+    total,
+  };
+}
+
+/**
+ * Returns a single aggregated summary (sum of all matching rows).
+ * Useful for dashboard cards.
+ */
+export async function aggregateReportSummary(opts: {
+  granularity: "hour" | "day" | "week" | "month";
+  from?: number;
+  to?: number;
+  providerId?: string;
+  modelId?: string;
+  apiKeyId?: string;
+}): Promise<{
+  requests: number;
+  requests_ok: number;
+  requests_err: number;
+  input_tokens: number;
+  cached_input_tokens: number;
+  output_tokens: number;
+}> {
+  const where: Record<string, unknown> = {
+    granularity: opts.granularity,
+  };
+  if (opts.from || opts.to) {
+    where.periodStart = {} as Record<string, unknown>;
+    if (opts.from)
+      (where.periodStart as Record<string, unknown>).gte = BigInt(opts.from);
+    if (opts.to)
+      (where.periodStart as Record<string, unknown>).lte = BigInt(opts.to);
+  }
+  if (opts.providerId) where.providerId = opts.providerId;
+  if (opts.modelId) where.modelId = opts.modelId;
+  if (opts.apiKeyId) where.apiKeyId = opts.apiKeyId;
+
+  const result = await prisma.aggregateReport.aggregate({
+    where: where as never,
+    _sum: {
+      requests: true,
+      requestsOk: true,
+      requestsErr: true,
+      inputTokens: true,
+      cachedInputTokens: true,
+      outputTokens: true,
+    },
+  });
+
+  return {
+    requests: result._sum.requests ?? 0,
+    requests_ok: result._sum.requestsOk ?? 0,
+    requests_err: result._sum.requestsErr ?? 0,
+    input_tokens: result._sum.inputTokens ?? 0,
+    cached_input_tokens: result._sum.cachedInputTokens ?? 0,
+    output_tokens: result._sum.outputTokens ?? 0,
+  };
 }

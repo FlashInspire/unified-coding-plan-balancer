@@ -4,11 +4,12 @@
  * Called every 60 seconds by an external scheduler (Vercel Cron, Uptime Kuma,
  * systemd timer, etc.). Each invocation runs the following jobs:
  *
- * 1. flush        — drain in-memory request log buffer → shard DB
+ * 1. flush        — drain in-memory request log buffer → request_log table
  * 2. aggregate    — aggregate the previous minute's logs into usage_minute
  * 3. keyTokenFlush — flush buffered API key token increments to DB
  * 4. reset        — reset expired provider & key quota counters
- * 5. archive      — purge expired log/stat shards (once per day)
+ * 5. archive      — purge expired log/stat rows (once per day)
+ * 6. aggregateReports — generate hour/day/week/month aggregate reports
  */
 import { flushOnce } from "@/lib/metrics/flusher";
 import {
@@ -16,6 +17,7 @@ import {
   getLastAggregatedMinute,
   setLastAggregatedMinute,
 } from "@/lib/metrics/aggregator";
+import { aggregateReports, ensureLatestPeriods } from "@/lib/metrics/reportAggregator";
 import { archiveOnce } from "@/lib/metrics/archiver";
 import { resetTick } from "@/lib/quota/reset-scheduler";
 import { userDimensionBuffer } from "@/lib/fee-pipeline/user-buffer";
@@ -33,7 +35,7 @@ export async function GET(): Promise<Response> {
 
   // 1. Flush request log buffer
   try {
-    const flushed = flushOnce();
+    const flushed = await flushOnce();
     jobs.flush = { records: flushed };
   } catch (err) {
     jobs.flush = { error: err instanceof Error ? err.message : "unknown" };
@@ -46,7 +48,7 @@ export async function GET(): Promise<Response> {
     let aggregated = 0;
     // Aggregate all minutes from lastMin+1 up to previousMinute (gap-fill).
     for (let m = lastMin + 1; m <= previousMinute; m++) {
-      aggregateMinute(m);
+      await aggregateMinute(m);
       setLastAggregatedMinute(m);
       aggregated++;
     }
@@ -92,7 +94,7 @@ export async function GET(): Promise<Response> {
   // 5. Archive (once per day)
   try {
     if (ts - lastArchiveAt >= ARCHIVE_INTERVAL_MS) {
-      const result = archiveOnce();
+      const result = await archiveOnce();
       lastArchiveAt = ts;
       jobs.archive = result;
     } else {
@@ -100,6 +102,26 @@ export async function GET(): Promise<Response> {
     }
   } catch (err) {
     jobs.archive = { error: err instanceof Error ? err.message : "unknown" };
+  }
+
+  // 6. Ensure latest aggregate report periods are current (retire stale flags)
+  try {
+    await ensureLatestPeriods(ts);
+    jobs.ensureLatestPeriods = { ok: true };
+  } catch (err) {
+    jobs.ensureLatestPeriods = {
+      error: err instanceof Error ? err.message : "unknown",
+    };
+  }
+
+  // 7. Aggregate reports (hour/day gap-fill, week/month once per day)
+  try {
+    const reportResult = await aggregateReports(ts);
+    jobs.aggregateReports = reportResult;
+  } catch (err) {
+    jobs.aggregateReports = {
+      error: err instanceof Error ? err.message : "unknown",
+    };
   }
 
   return Response.json({ ok: true, ts, jobs });

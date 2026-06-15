@@ -1,58 +1,54 @@
+/**
+ * Flushes the in-memory metrics buffer to the PostgreSQL request_log table.
+ * All records go to a single table — no more sharding.
+ */
 import { env } from "@/lib/env";
-import { dateKey, shardStore } from "@/lib/metrics/shardStore";
+import { prisma } from "@/lib/prisma";
 import { metricsBuffer, type RequestLogRecord } from "@/lib/metrics/buffer";
 
 /**
- * Insert a new in-flight request log row directly into the shard DB.
- * Returns the autoincrement row ID so the caller can later update it.
+ * Insert a new in-flight request log row. Returns the row ID for later updates.
  */
-export function logRequestStart(record: RequestLogRecord): number {
-  const k = dateKey(new Date(record.ts));
-  const db = shardStore.openLog(k);
-  const result = db
-    .prepare(
-      `INSERT INTO request_log
-       (ts, api_key_id, model_id, provider_id, real_model_id,
-        api_mode_in, api_mode_out, stream, status, error_code,
-        ttft_ms, tps_out, latency_ms,
-        input_tokens, cached_input_tokens, output_tokens, ip,
-        user_agent, api_key_name, provider_name, completed, aborted)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    )
-    .run(
-      record.ts,
-      record.apiKeyId,
-      record.modelId,
-      record.providerId,
-      record.realModelId,
-      record.apiModeIn,
-      record.apiModeOut,
-      record.stream ? 1 : 0,
-      0, // status=0 means in-flight
-      null,
-      null,
-      null,
-      0,
-      0,
-      0,
-      0,
-      record.ip,
-      record.userAgent,
-      record.apiKeyName,
-      record.providerName,
-      0, // completed=0 means in-flight
-      0, // aborted=0 means not aborted
-    );
-  return Number(result.lastInsertRowid);
+export async function logRequestStart(
+  record: RequestLogRecord,
+): Promise<bigint | null> {
+  try {
+    const row = await prisma.requestLog.create({
+      data: {
+        ts: BigInt(record.ts),
+        apiKeyId: record.apiKeyId,
+        modelId: record.modelId,
+        providerId: record.providerId,
+        realModelId: record.realModelId,
+        apiModeIn: record.apiModeIn,
+        apiModeOut: record.apiModeOut,
+        stream: record.stream,
+        status: 0, // in-flight
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        outputTokens: 0,
+        latencyMs: 0,
+        ip: record.ip,
+        userAgent: record.userAgent,
+        apiKeyName: record.apiKeyName,
+        providerName: record.providerName,
+        completed: false,
+        aborted: false,
+      },
+    });
+    return row.id;
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Immediately update an existing request_log row in the shard DB.
+ * Immediately update an existing request_log row.
  * Used for early updates (e.g. TTFT) before the request completes.
  */
-export function logRequestUpdate(
+export async function logRequestUpdate(
   requestId: number,
-  ts: number,
+  _ts: number,
   fields: {
     status?: number;
     ttftMs?: number | null;
@@ -66,135 +62,99 @@ export function logRequestUpdate(
     completed?: boolean;
     aborted?: boolean;
   },
-): void {
-  const k = dateKey(new Date(ts));
-  const db = shardStore.openLog(k);
-  db.prepare(
-    `UPDATE request_log SET
-       status = COALESCE(?, status),
-       ttft_ms = COALESCE(?, ttft_ms),
-       tps_out = COALESCE(?, tps_out),
-       latency_ms = COALESCE(?, latency_ms),
-       input_tokens = COALESCE(?, input_tokens),
-       cached_input_tokens = COALESCE(?, cached_input_tokens),
-       output_tokens = COALESCE(?, output_tokens),
-       error_code = COALESCE(?, error_code),
-       completed = MAX(COALESCE(?, completed), completed),
-       aborted = MAX(COALESCE(?, aborted), aborted)
-     WHERE id = ?`,
-  ).run(
-    fields.status ?? null,
-    fields.ttftMs ?? null,
-    fields.tpsOut ?? null,
-    fields.latencyMs ?? null,
-    fields.inputTokens ?? null,
-    fields.cachedReadTokens ?? null,
-    fields.outputTokens ?? null,
-    fields.errorCode ?? null,
-    fields.completed != null ? (fields.completed ? 1 : 0) : null,
-    fields.aborted != null ? (fields.aborted ? 1 : 0) : null,
-    requestId,
-  );
+): Promise<void> {
+  try {
+    const data: Record<string, unknown> = {};
+    if (fields.status != null) data.status = fields.status;
+    if (fields.ttftMs != null) data.ttftMs = fields.ttftMs;
+    if (fields.tpsOut != null) data.tpsOut = fields.tpsOut;
+    if (fields.latencyMs != null) data.latencyMs = fields.latencyMs;
+    if (fields.inputTokens != null) data.inputTokens = fields.inputTokens;
+    if (fields.cachedReadTokens != null)
+      data.cachedInputTokens = fields.cachedReadTokens;
+    if (fields.outputTokens != null) data.outputTokens = fields.outputTokens;
+    if (fields.errorCode != null) data.errorCode = fields.errorCode;
+    if (fields.completed != null) data.completed = fields.completed;
+    if (fields.aborted != null) data.aborted = fields.aborted;
+
+    if (Object.keys(data).length === 0) return;
+
+    await prisma.requestLog.update({
+      where: { id: BigInt(requestId) },
+      data,
+    });
+  } catch {
+    /* never block on metrics */
+  }
 }
 
-export function flushOnce(): number {
+/**
+ * Drain the in-memory buffer and batch-write to PostgreSQL.
+ * Inserts and updates are separated since they need different Prisma calls.
+ */
+export async function flushOnce(): Promise<number> {
   const batch = metricsBuffer.drain(env.METRICS_FLUSH_BATCH_SIZE);
   if (batch.length === 0) return 0;
 
-  // Group by date so we hit the right per-day shard.
-  const byDate = new Map<string, RequestLogRecord[]>();
-  for (const r of batch) {
-    const k = dateKey(new Date(r.ts));
-    let arr = byDate.get(k);
-    if (!arr) {
-      arr = [];
-      byDate.set(k, arr);
-    }
-    arr.push(r);
+  // Separate new inserts from completion updates.
+  const inserts = batch.filter((r) => r.requestId == null);
+  const updates = batch.filter((r) => r.requestId != null);
+
+  // Batch inserts via createMany
+  if (inserts.length > 0) {
+    await prisma.requestLog.createMany({
+      data: inserts.map((r) => ({
+        ts: BigInt(r.ts),
+        apiKeyId: r.apiKeyId,
+        modelId: r.modelId,
+        providerId: r.providerId,
+        realModelId: r.realModelId,
+        apiModeIn: r.apiModeIn,
+        apiModeOut: r.apiModeOut,
+        stream: r.stream,
+        status: r.status ?? 0,
+        errorCode: r.errorCode,
+        ttftMs: r.ttftMs,
+        tpsOut: r.tpsOut,
+        latencyMs: r.latencyMs ?? 0,
+        inputTokens: r.inputTokens ?? 0,
+        cachedInputTokens: r.cachedReadTokens ?? 0,
+        outputTokens: r.outputTokens ?? 0,
+        ip: r.ip,
+        userAgent: r.userAgent,
+        apiKeyName: r.apiKeyName,
+        providerName: r.providerName,
+        completed: r.completed ?? false,
+        aborted: r.aborted ?? false,
+      })),
+    });
   }
 
-  for (const [k, recs] of byDate) {
-    const db = shardStore.openLog(k);
+  // Updates: Prisma doesn't support batch update with different data,
+  // so we use a transaction with individual updates.
+  if (updates.length > 0) {
+    await prisma.$transaction(
+      updates.map((r) => {
+        const data: Record<string, unknown> = {
+          status: r.status,
+          errorCode: r.errorCode,
+          ttftMs: r.ttftMs,
+          tpsOut: r.tpsOut,
+          latencyMs: r.latencyMs,
+          inputTokens: r.inputTokens,
+          cachedInputTokens: r.cachedReadTokens,
+          outputTokens: r.outputTokens,
+        };
+        if (r.completed != null) data.completed = r.completed;
+        if (r.aborted != null) data.aborted = r.aborted;
 
-    // Separate completion updates (have requestId) from new inserts.
-    const inserts = recs.filter((r) => r.requestId == null);
-    const updates = recs.filter((r) => r.requestId != null);
-
-    if (inserts.length > 0) {
-      const stmt = db.prepare(
-        `INSERT INTO request_log
-         (ts, api_key_id, model_id, provider_id, real_model_id,
-          api_mode_in, api_mode_out, stream, status, error_code,
-          ttft_ms, tps_out, latency_ms,
-          input_tokens, cached_input_tokens, output_tokens, ip,
-          user_agent, api_key_name, provider_name, completed, aborted)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      );
-      const tx = db.transaction((rows: RequestLogRecord[]) => {
-        for (const r of rows) {
-          stmt.run(
-            r.ts,
-            r.apiKeyId,
-            r.modelId,
-            r.providerId,
-            r.realModelId,
-            r.apiModeIn,
-            r.apiModeOut,
-            r.stream ? 1 : 0,
-            r.status,
-            r.errorCode,
-            r.ttftMs,
-            r.tpsOut,
-            r.latencyMs,
-            r.inputTokens,
-            r.cachedReadTokens,
-            r.outputTokens,
-            r.ip,
-            r.userAgent,
-            r.apiKeyName,
-            r.providerName,
-            r.completed ? 1 : 0,
-            r.aborted ? 1 : 0,
-          );
-        }
-      });
-      tx(inserts);
-    }
-
-    if (updates.length > 0) {
-      const stmt = db.prepare(
-        `UPDATE request_log SET
-           status = ?,
-           error_code = ?,
-           ttft_ms = ?,
-           tps_out = ?,
-           latency_ms = ?,
-           input_tokens = ?,
-           cached_input_tokens = ?,
-           output_tokens = ?,
-           completed = MAX(COALESCE(?, completed), completed),
-           aborted = MAX(COALESCE(?, aborted), aborted)
-         WHERE id = ?`,
-      );
-      const tx = db.transaction((rows: RequestLogRecord[]) => {
-        for (const r of rows) {
-          stmt.run(
-            r.status,
-            r.errorCode,
-            r.ttftMs,
-            r.tpsOut,
-            r.latencyMs,
-            r.inputTokens,
-            r.cachedReadTokens,
-            r.outputTokens,
-            r.completed != null ? (r.completed ? 1 : 0) : null,
-            r.aborted != null ? (r.aborted ? 1 : 0) : null,
-            r.requestId,
-          );
-        }
-      });
-      tx(updates);
-    }
+        return prisma.requestLog.update({
+          where: { id: BigInt(r.requestId!) },
+          data,
+        });
+      }),
+    );
   }
+
   return batch.length;
 }

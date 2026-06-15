@@ -14,19 +14,18 @@
 
 ## 2. 技术栈
 
-| 类别         | 选择                                                     |
-| ------------ | -------------------------------------------------------- |
-| 框架         | Next.js 15（App Router）+ TypeScript（strict）           |
-| 配置 DB      | SQLite (`data/config.sqlite`) + Prisma                   |
-| 指标 DB      | SQLite 日期分片 + `better-sqlite3`（**不走 Prisma**）    |
-| 鉴权（后台） | NextAuth Credentials Provider + bcrypt                   |
-| 鉴权（API）  | Bearer API Key（SHA-256 hash 比对）                      |
-| UI           | Tailwind CSS + shadcn/ui                                 |
-| 入参校验     | Zod                                                      |
-| 图表         | Recharts（或 visx）                                      |
-| HTTP 客户端  | `fetch` + `undici`（流式）                               |
-| 加密         | —（v1 不加密；Provider apiKey 明文存 SQLite）            |
-| 部署         | Docker 单容器，**零外部依赖**（所有数据 → `data/` 挂卷） |
+| 类别         | 选择                                            |
+| ------------ | ----------------------------------------------- |
+| 框架         | Next.js 15（App Router）+ TypeScript（strict）  |
+| 数据库       | PostgreSQL + Prisma                             |
+| 鉴权（后台） | NextAuth Credentials Provider + bcrypt          |
+| 鉴权（API）  | Bearer API Key（SHA-256 hash 比对）             |
+| UI           | Tailwind CSS + shadcn/ui                        |
+| 入参校验     | Zod                                             |
+| 图表         | Recharts（或 visx）                             |
+| HTTP 客户端  | `fetch` + `undici`（流式）                      |
+| 加密         | —（v1 不加密；Provider apiKey 明文存数据库）    |
+| 部署         | Docker 单容器 + PostgreSQL（所有数据 → 数据库） |
 
 ---
 
@@ -74,12 +73,12 @@
 │   │   ├── apiKey.ts             # 对外 API Key 中间件 (前缀固定 sk-y6-)
 │   │   └── password.ts           # bcrypt 封装
 │   ├── metrics/
-│   │   ├── buffer.ts             # MetricsBuffer
-│   │   ├── shardStore.ts         # better-sqlite3 LRU 连接池
-│   │   ├── flusher.ts            # 1s 批量写入 logs/*.sqlite
-│   │   ├── aggregator.ts         # 分钟聚合 -> stats/*.sqlite
-│   │   ├── archiver.ts           # 归档 + 清理
-│   │   └── queryRouter.ts        # 跨分片查询
+│   │   ├── buffer.ts             # MetricsBuffer (in-memory ring)
+│   │   ├── flusher.ts            # 批量写入 request_log (PostgreSQL)
+│   │   ├── aggregator.ts         # 分钟聚合 -> usage_minute
+│   │   ├── reportAggregator.ts   # 小时/日/周/月聚合 -> aggregate_report
+│   │   ├── archiver.ts           # 归档 + 清理 (deleteMany)
+│   │   └── queryRouter.ts        # 跨表查询 API
 │   ├── repositories/             # Prisma 操作统一封装
 │   │   ├── providerRepo.ts
 │   │   ├── modelRepo.ts
@@ -126,9 +125,9 @@
 
 ### 4.3 指标 / 日志
 
-- `request_log` / `usage_minute` / `usage_hour` / `usage_day` **绝对不进 Prisma schema**
-- 所有读写必须经 `lib/metrics/shardStore.ts` 或 `lib/metrics/queryRouter.ts`
-- 业务代码禁止直接 `import Database from 'better-sqlite3'`
+- `request_log` / `usage_minute` / `aggregate_report` 由 Prisma 管理，直接通过 Prisma Client 读写
+- 所有读写可经 `lib/metrics/queryRouter.ts` 或直接用 Prisma
+- 业务代码禁止在请求路径上做同步阻塞操作
 
 ### 4.4 安全
 
@@ -143,7 +142,7 @@
 ### 4.5 命名与风格
 
 - 文件名 `kebab-case`，类型/类名 `PascalCase`，函数/变量 `camelCase`，常量 `SCREAMING_SNAKE_CASE`
-- 数据库字段 `snake_case`（SQLite）/ `camelCase`（Prisma）
+- 数据库字段 `snake_case`（通过 `@map`）/ `camelCase`（Prisma）
 - 异步函数全部加 `async`，使用 `await`；禁止裸 `.then()` 链
 - 提交规范：**Conventional Commits**（`feat:` / `fix:` / `refactor:` / `chore:` / `docs:` / `test:`）
 
@@ -205,14 +204,14 @@ pnpm prisma generate
 
 ## 6. 测试要求
 
-| 模块                           | 必需测试                                              |
-| ------------------------------ | ----------------------------------------------------- |
-| `lib/adapters/translate/`      | 单元测试覆盖 openai↔anthropic 双向，含流式 chunk 序列 |
-| `lib/routing/resolveParams.ts` | 表驱动测试覆盖三层优先级 + maxTokens 截断             |
-| `lib/routing/dispatch.ts`      | 集成测试：首选失败 → fallback 成功；全部失败 → 502    |
-| `lib/quota/handlers/*`         | mock 上游 fetch 验证归一化输出                        |
-| `lib/metrics/shardStore.ts`    | 分片切换、并发写入、WAL 行为                          |
-| `lib/auth/apiKey.ts`           | 无 key / 无效 key / 已停用 key 三种用例               |
+| 模块                           | 必需测试                                                  |
+| ------------------------------ | --------------------------------------------------------- |
+| `lib/adapters/translate/`      | 单元测试覆盖 openai↔anthropic 双向，含流式 chunk 序列     |
+| `lib/routing/resolveParams.ts` | 表驱动测试覆盖三层优先级 + maxTokens 截断                 |
+| `lib/routing/dispatch.ts`      | 集成测试：首选失败 → fallback 成功；全部失败 → 502        |
+| `lib/quota/handlers/*`         | mock 上游 fetch 验证归一化输出                            |
+| `lib/metrics/queryRouter.ts`   | 查询 API 覆盖 recentLogs / usageInMonth / aggregateReport |
+| `lib/auth/apiKey.ts`           | 无 key / 无效 key / 已停用 key 三种用例                   |
 
 运行：
 
@@ -231,7 +230,7 @@ pnpm test:coverage
 pnpm install
 pnpm dev                                # next dev
 pnpm prisma migrate dev                 # 改完 schema.prisma 后
-pnpm prisma studio                      # 浏览 SQLite (data/config.sqlite)
+pnpm prisma studio                      # 浏览 PostgreSQL
 pnpm lint
 pnpm typecheck
 
@@ -253,16 +252,17 @@ docker compose logs -f router
 
 ## 8. 必读 / 必知红线
 
-| ❌ 禁止                                             | ✅ 替代方案                                 |
-| --------------------------------------------------- | ------------------------------------------- |
-| 在 route handler 里直接调 `prisma.*`                | 通过 `lib/repositories/*`                   |
-| 把 client request body 直接透传给上游               | 先 `resolveModelParams()` 重组 body         |
-| 把 `request_log` / `usage_*` 表加进 `schema.prisma` | 走 `lib/metrics/shardStore.ts`              |
-| 在日志里打印 Provider apiKey 明文                   | 永远不打印；调试用 mask（仅保留前 4 后 4）  |
-| 在响应/错误信息中暴露上游 URL / Provider id         | 统一脱敏                                    |
-| 允许客户端通过 body / header 指定走某个 Provider    | 路由由网关决定，客户端只能传 `model_id`     |
-| 同步阻塞操作（如同步 fs）放在请求路径上             | 异步化；指标走 buffer 异步 flush            |
-| 在 next dev 热重载里启动重复的 worker               | 用 `globalThis.__ucpb_workers_started` 守卫 |
+| ❌ 禁止                                                  | ✅ 替代方案                                 |
+| -------------------------------------------------------- | ------------------------------------------- |
+| 在 route handler 里直接调 `prisma.*`                     | 通过 `lib/repositories/*`                   |
+| 把 client request body 直接透传给上游                    | 先 `resolveModelParams()` 重组 body         |
+| 把 `request_log` / `usage_*` 表加进 `schema.prisma`      | 走 `lib/metrics/shardStore.ts`              |
+| 业务代码禁止直接 `import Database from 'better-sqlite3'` | 所有 DB 操作走 Prisma                       |
+| 在日志里打印 Provider apiKey 明文                        | 永远不打印；调试用 mask（仅保留前 4 后 4）  |
+| 在响应/错误信息中暴露上游 URL / Provider id              | 统一脱敏                                    |
+| 允许客户端通过 body / header 指定走某个 Provider         | 路由由网关决定，客户端只能传 `model_id`     |
+| 同步阻塞操作（如同步 fs）放在请求路径上                  | 异步化；指标走 buffer 异步 flush            |
+| 在 next dev 热重载里启动重复的 worker                    | 用 `globalThis.__ucpb_workers_started` 守卫 |
 
 ---
 
@@ -271,7 +271,7 @@ docker compose logs -f router
 参见 `DESIGN.md` §12.2、§12.3。开发可在 `.env.local` 中：
 
 ```
-DATABASE_URL=file:./data/config.sqlite
+DATABASE_URL=postgresql://user:pass@localhost:5432/ucpb
 NEXTAUTH_SECRET=<random>
 ADMIN_INIT_USERNAME=admin
 ADMIN_INIT_PASSWORD=changeme

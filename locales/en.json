@@ -5,7 +5,8 @@
   "nav.models": "Models",
   "nav.apiKeys": "API Keys",
   "nav.quota": "Quota",
-  "nav.logs": "Logs & Usage",
+  "nav.logs": "Logs",
+  "nav.report": "Report",
   "nav.users": "Users",
   "nav.settings": "Settings",
   "table.actions": "Actions",
@@ -39,7 +40,8 @@
   "page.models.title": "Models",
   "page.apiKeys.title": "API Keys",
   "page.quota.title": "Quota Snapshots",
-  "page.logs.title": "Logs & Usage",
+  "page.logs.title": "Logs",
+  "page.report.title": "Aggregate Report",
   "page.users.title": "Users",
   "page.settings.title": "Settings",
   "dashboard.welcome": "Welcome to Unified Coding Plan Balancer admin panel.",
@@ -285,5 +287,6 @@
   "settings.system.saved": "Saved!",
   "status.inFlight": "In-flight",
   "status.enabled": "Enabled",
-  "status.disabled": "Disabled"
+  "status.disabled": "Disabled",
+  "logs.live": "Live"
 }

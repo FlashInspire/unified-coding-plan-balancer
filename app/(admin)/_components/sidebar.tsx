@@ -11,6 +11,7 @@ import {
   Settings,
   LayoutDashboard,
   Menu,
+  BarChart2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -45,6 +46,12 @@ const NAV_ITEMS = [
     href: "/logs",
     labelKey: "nav.logs",
     icon: ScrollText,
+    roles: ["admin", "user"],
+  },
+  {
+    href: "/report",
+    labelKey: "nav.report",
+    icon: BarChart2,
     roles: ["admin", "user"],
   },
   { href: "/users", labelKey: "nav.users", icon: Users, roles: ["admin"] },

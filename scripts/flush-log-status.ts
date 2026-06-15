@@ -2,78 +2,44 @@
 /**
  * scripts/flush-log-status.ts
  *
- * Set completed=1 for every row in request_log across all log shards.
+ * Set completed=true for every in-flight row in request_log.
  * Useful after a crash/restart where in-flight requests were never finalized.
  *
  * Usage:
  *   pnpm tsx scripts/flush-log-status.ts
  *   pnpm tsx scripts/flush-log-status.ts --dry-run
  */
-import * as fs from "node:fs";
-import * as path from "node:path";
-import Database from "better-sqlite3";
+import "dotenv/config";
+import { PrismaClient } from "@prisma/client";
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 
-const logsDir = path.join(process.cwd(), "data", "logs");
+const prisma = new PrismaClient();
 
-if (!fs.existsSync(logsDir)) {
-  console.error(`Logs directory not found: ${logsDir}`);
-  process.exit(1);
-}
+async function main() {
+  const pending = await prisma.requestLog.count({
+    where: { completed: false },
+  });
 
-const shards = fs
-  .readdirSync(logsDir)
-  .filter((f) => f.endsWith(".sqlite"))
-  .sort();
+  console.log(
+    `Found ${pending} in-flight row(s)${dryRun ? " [DRY RUN]" : ""}.`,
+  );
 
-if (shards.length === 0) {
-  console.log("No log shards found.");
-  process.exit(0);
-}
-
-console.log(`Found ${shards.length} shard(s)${dryRun ? " [DRY RUN]" : ""}:`);
-
-let totalUpdated = 0;
-
-for (const shard of shards) {
-  const filePath = path.join(logsDir, shard);
-  const db = new Database(filePath);
-
-  try {
-    db.pragma("journal_mode = WAL");
-
-    // Check whether this shard has the completed column (older shards may not).
-    const cols = (
-      db.prepare("PRAGMA table_info(request_log)").all() as Array<{
-        name: string;
-      }>
-    ).map((c) => c.name);
-
-    if (!cols.includes("completed")) {
-      console.log(`  ${shard}: skipped (no 'completed' column)`);
-      continue;
-    }
-
-    const pending = db
-      .prepare("SELECT COUNT(*) as n FROM request_log WHERE completed = 0")
-      .get() as { n: number };
-
-    if (dryRun) {
-      console.log(`  ${shard}: ${pending.n} row(s) would be updated`);
-    } else {
-      const result = db
-        .prepare("UPDATE request_log SET completed = 1 WHERE completed = 0")
-        .run();
-      console.log(`  ${shard}: updated ${result.changes} row(s)`);
-      totalUpdated += result.changes;
-    }
-  } finally {
-    db.close();
+  if (dryRun) {
+    console.log(`  ${pending} row(s) would be updated.`);
+  } else {
+    const result = await prisma.requestLog.updateMany({
+      where: { completed: false },
+      data: { completed: true },
+    });
+    console.log(`\nDone. Total rows updated: ${result.count}`);
   }
 }
 
-if (!dryRun) {
-  console.log(`\nDone. Total rows updated: ${totalUpdated}`);
-}
+main()
+  .catch((e) => {
+    console.error("❌ Failed:", e);
+    process.exit(1);
+  })
+  .finally(() => prisma.$disconnect());

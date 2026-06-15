@@ -4,8 +4,8 @@
 import { env } from "@/lib/env";
 
 export interface RequestLogRecord {
-  /** Row ID from the shard DB. Present only on completion updates. */
-  requestId?: number;
+  /** Row ID from the request_log table. Present only on completion updates. */
+  requestId?: number | bigint;
   ts: number; // epoch ms
   apiKeyId: string;
   apiKeyName: string;

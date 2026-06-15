@@ -27,6 +27,6 @@ export async function GET(
     Math.min(12, Number(url.searchParams.get("months")) || 3),
   );
 
-  const data = apiKeyTokenUsageMultiMonth(id, period, months);
+  const data = await apiKeyTokenUsageMultiMonth(id, period, months);
   return Response.json({ data });
 }

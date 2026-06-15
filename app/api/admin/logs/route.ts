@@ -35,7 +35,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     }
   }
 
-  const result = recentLogs({
+  const result = await recentLogs({
     limit: q.limit,
     offset: q.offset,
     days: q.days,
