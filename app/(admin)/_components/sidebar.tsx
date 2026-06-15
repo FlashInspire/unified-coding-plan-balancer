@@ -6,7 +6,6 @@ import {
   Server,
   Layers,
   Key,
-  BarChart3,
   ScrollText,
   Users,
   Settings,
@@ -25,7 +24,6 @@ const NAV_ITEMS = [
   { href: "/providers", labelKey: "nav.providers", icon: Server },
   { href: "/models", labelKey: "nav.models", icon: Layers },
   { href: "/api-keys", labelKey: "nav.apiKeys", icon: Key },
-  { href: "/quota", labelKey: "nav.quota", icon: BarChart3 },
   { href: "/logs", labelKey: "nav.logs", icon: ScrollText },
   { href: "/users", labelKey: "nav.users", icon: Users },
 ] as const;

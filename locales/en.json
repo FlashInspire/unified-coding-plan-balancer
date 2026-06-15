@@ -8,18 +8,15 @@
   "nav.logs": "Logs & Usage",
   "nav.users": "Users",
   "nav.settings": "Settings",
-
   "table.actions": "Actions",
   "table.noData": "No data",
   "table.confirmDelete": "Delete?",
-
   "dialog.cancel": "Cancel",
   "dialog.save": "Save",
   "dialog.create": "Create",
   "dialog.update": "Update",
   "dialog.submitFailed": "Submit failed",
   "dialog.invalidJson": "Invalid JSON in {field}",
-
   "common.loading": "Loading...",
   "common.refresh": "Refresh",
   "common.edit": "Edit",
@@ -36,9 +33,7 @@
   "common.confirm": "Confirm",
   "common.close": "Close",
   "common.none": "None",
-
   "auth.signOut": "Sign out",
-
   "page.dashboard.title": "Dashboard",
   "page.providers.title": "Providers",
   "page.models.title": "Models",
@@ -47,7 +42,6 @@
   "page.logs.title": "Logs & Usage",
   "page.users.title": "Users",
   "page.settings.title": "Settings",
-
   "dashboard.welcome": "Welcome to Unified Coding Plan Balancer admin panel.",
   "dashboard.stats.requests1h": "Requests (1h)",
   "dashboard.stats.requests1d": "Requests (1d)",
@@ -74,7 +68,6 @@
   "dashboard.nav.usersDesc": "Admin user management",
   "dashboard.nav.settings": "Settings",
   "dashboard.nav.settingsDesc": "Account settings",
-
   "providers.table.name": "Name",
   "providers.table.quota": "Quota",
   "providers.table.endpoints": "Endpoints",
@@ -113,7 +106,7 @@
   "providers.confirmDelete": "Delete this provider?",
   "providers.action.disable": "Disable",
   "providers.action.enable": "Enable",
-
+  "providers.action.clearRunningOut": "Clear Running out",
   "models.list.heading": "Models",
   "models.list.addNew": "+ New",
   "models.list.searchPlaceholder": "Search models...",
@@ -155,7 +148,6 @@
   "models.form.vision": "Vision",
   "models.form.enableThinking": "Enable Thinking",
   "models.form.thinkingBudget": "Thinking Budget",
-
   "apiKeys.dialog.createTitle": "New API Key",
   "apiKeys.dialog.createTrigger": "+ New Key",
   "apiKeys.dialog.editTitle": "Edit API Key",
@@ -189,13 +181,11 @@
   "apiKeys.created.copied": "Copied",
   "apiKeys.created.copy": "Copy",
   "apiKeys.created.close": "Close",
-
   "quota.table.provider": "Provider",
   "quota.table.usagePercent": "Usage %",
   "quota.table.status": "Status",
   "quota.table.fetchedAt": "Fetched At",
   "quota.status.runningOut": "Running out",
-
   "logs.tabs.requestLogs": "Request Logs",
   "logs.tabs.aggregatedUsage": "Aggregated Usage",
   "logs.table.time": "Time",
@@ -230,7 +220,6 @@
   "logs.usage.inputTokens": "Input Tokens",
   "logs.usage.cachedInput": "Cached Input",
   "logs.usage.outputTokens": "Output Tokens",
-
   "users.dialog.addTitle": "Add User",
   "users.dialog.addTrigger": "+ Add User",
   "users.dialog.editTitle": "Edit User",
@@ -243,7 +232,6 @@
   "users.status.mustChange": "Must change password",
   "users.status.active": "Active",
   "users.confirmDelete": "Delete user \"{name}\"?",
-
   "settings.tabs.profile": "User Profile",
   "settings.tabs.system": "System Settings",
   "settings.profile.title": "User Profile",
@@ -269,7 +257,6 @@
   "settings.system.saveAll": "Save All",
   "settings.system.saving": "Saving…",
   "settings.system.saved": "Saved!",
-
   "status.inFlight": "In-flight",
   "status.enabled": "Enabled",
   "status.disabled": "Disabled"

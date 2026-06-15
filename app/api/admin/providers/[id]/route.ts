@@ -71,6 +71,11 @@ export async function PATCH(
       resetQuotaRetries(id);
     }
 
+    // When quotaRunningOut is explicitly cleared, also reset in-memory state.
+    if (data.quotaRunningOut === false) {
+      resetQuotaRetries(id);
+    }
+
     const row = await providerRepo.update(id, data);
     return Response.json({ data: row });
   } catch (e) {

@@ -14,7 +14,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Pencil, Power } from "lucide-react";
+import { Pencil, Power, RotateCcw } from "lucide-react";
 import type { ProviderRow } from "@/lib/types";
 import { useT } from "../_components/i18n-provider";
 
@@ -23,10 +23,7 @@ import { useT } from "../_components/i18n-provider";
 // ---------------------------------------------------------------------------
 
 /** Basic info section — used for both create and edit. */
-function basicFields(
-  includeId: boolean,
-  t: (key: string) => string,
-) {
+function basicFields(includeId: boolean, t: (key: string) => string) {
   const fields: Array<{
     name: string;
     label: string;
@@ -44,7 +41,12 @@ function basicFields(
     });
   }
   fields.push(
-    { name: "name", label: t("providers.form.name"), type: "text", required: true },
+    {
+      name: "name",
+      label: t("providers.form.name"),
+      type: "text",
+      required: true,
+    },
     {
       name: "planStartTime",
       label: t("providers.form.planStartTime"),
@@ -66,8 +68,16 @@ function endpointsTabs(
       {
         label: `${t("providers.tab.openai")}${openaiConfigured ? t("providers.tab.configured") : ""}`,
         fields: [
-          { name: "baseUrlOpenai", label: t("providers.form.baseUrl"), type: "text" as const },
-          { name: "apiKeyOpenai", label: t("providers.form.apiKey"), type: "text" as const },
+          {
+            name: "baseUrlOpenai",
+            label: t("providers.form.baseUrl"),
+            type: "text" as const,
+          },
+          {
+            name: "apiKeyOpenai",
+            label: t("providers.form.apiKey"),
+            type: "text" as const,
+          },
         ],
       },
       {
@@ -78,7 +88,11 @@ function endpointsTabs(
             label: t("providers.form.baseUrl"),
             type: "text" as const,
           },
-          { name: "apiKeyAnthropic", label: t("providers.form.apiKey"), type: "text" as const },
+          {
+            name: "apiKeyAnthropic",
+            label: t("providers.form.apiKey"),
+            type: "text" as const,
+          },
         ],
       },
     ],
@@ -186,7 +200,10 @@ function formatDuration(ms: number, t: (key: string) => string): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-function formatNextReset(resetAt: Date | null, t: (key: string) => string): string {
+function formatNextReset(
+  resetAt: Date | null,
+  t: (key: string) => string,
+): string {
   if (!resetAt) return "—";
   const diff = resetAt.getTime() - Date.now();
   if (diff < 24 * 60 * 60_000) {
@@ -226,6 +243,14 @@ export default function ProvidersPage() {
 
   async function handleDelete(id: string) {
     await apiFetch(`/api/admin/providers/${id}`, { method: "DELETE" });
+    await load();
+  }
+
+  async function handleClearRunningOut(row: ProviderRow) {
+    await apiFetch(`/api/admin/providers/${row.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ quotaRunningOut: false }),
+    });
     await load();
   }
 
@@ -282,7 +307,10 @@ export default function ProvidersPage() {
                   {anyQuota ? `${Math.round(maxPct)}%` : "∞"}
                 </span>
                 {p.quotaRunningOut && (
-                  <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">
+                  <Badge
+                    variant="destructive"
+                    className="text-[9px] px-1 py-0 h-4"
+                  >
                     {t("providers.quota.runningOut")}
                   </Badge>
                 )}
@@ -400,7 +428,9 @@ export default function ProvidersPage() {
             ))}
           </div>
         ) : data.length === 0 ? (
-          <div className="text-muted-foreground text-xs">{t("providers.empty")}</div>
+          <div className="text-muted-foreground text-xs">
+            {t("providers.empty")}
+          </div>
         ) : (
           <DataTable
             columns={columns}
@@ -421,6 +451,16 @@ export default function ProvidersPage() {
               const p = row as unknown as ProviderRow;
               return (
                 <>
+                  {p.quotaRunningOut && (
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => void handleClearRunningOut(p)}
+                      title={t("providers.action.clearRunningOut")}
+                    >
+                      <RotateCcw className="h-3 w-3 text-red-500" />
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="icon-xs"
@@ -432,7 +472,11 @@ export default function ProvidersPage() {
                     variant="ghost"
                     size="icon-xs"
                     onClick={() => void handleToggle(p)}
-                    title={p.enabled ? t("providers.action.disable") : t("providers.action.enable")}
+                    title={
+                      p.enabled
+                        ? t("providers.action.disable")
+                        : t("providers.action.enable")
+                    }
                   >
                     <Power
                       className={`h-3 w-3 ${
