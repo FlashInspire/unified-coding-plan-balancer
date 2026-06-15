@@ -283,7 +283,52 @@ METRICS_FLUSH_INTERVAL_MS=1000
 
 ---
 
-## 10. PR 与代码评审
+## 10. Prisma v7 注意事项
+
+### 10.1 必须使用 Driver Adapter
+
+Prisma v7 **不再支持**在 `schema.prisma` 的 `datasource` 块中写 `url = env("DATABASE_URL")`，也不再支持向 `PrismaClient` 构造函数传入 `datasourceUrl`。
+
+**正确做法**：通过 `@prisma/adapter-pg` 显式传入连接字符串：
+
+```ts
+import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+const prisma = new PrismaClient({ adapter });
+```
+
+- `lib/prisma.ts` 已按此方式实现（包含 `globalThis` 单例守卫）
+- 脚本（如 `scripts/migrate-to-pg.ts`）也须同样方式初始化 `PrismaClient`
+
+### 10.2 Schema 规则
+
+- `datasource db` 块只写 `provider = "postgresql"`，**不写 `url`**
+- 连接 URL 仅在 `prisma.config.ts`（CLI 使用）和运行时 `PrismaPg` adapter 中配置
+
+### 10.3 脚本顶层 `await`
+
+`tsx` 默认以 CJS 格式执行，**不支持顶层 `await`**。所有脚本的入口逻辑必须包在 IIFE 中：
+
+```ts
+(async () => {
+  // ...
+})();
+```
+
+### 10.4 已安装的相关包
+
+| 包                               | 位置            | 用途                                              |
+| -------------------------------- | --------------- | ------------------------------------------------- |
+| `@prisma/adapter-pg`             | dependencies    | Prisma v7 PostgreSQL driver adapter               |
+| `pg`                             | dependencies    | Node.js PostgreSQL 客户端（adapter 依赖）         |
+| `@types/pg`                      | devDependencies | pg 类型定义                                       |
+| `@prisma/adapter-better-sqlite3` | devDependencies | 仅迁移脚本读取旧 SQLite 数据，不用于 PrismaClient |
+
+---
+
+## 11. PR 与代码评审
 
 - 任何对**路由 / 鉴权 / 指标流水线**模块的改动必须附带测试
 - 任何对 `prisma/schema.prisma` 的改动必须附 migration

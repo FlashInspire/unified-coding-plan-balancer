@@ -17,6 +17,7 @@ import * as path from "node:path";
 import { execSync } from "node:child_process";
 import Database from "better-sqlite3";
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 
 // ── Arg parse ──────────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
@@ -105,7 +106,9 @@ sqlite.close();
 
 // ── Step 3: Insert into PostgreSQL via Prisma ─────────────────────────────
 console.log("\n📥 Step 3: Inserting data into PostgreSQL...");
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: pgUrl }),
+});
 
 // Helper: convert SQLite boolean (0/1) to JS boolean
 function toBool(v: unknown): boolean {
@@ -157,9 +160,11 @@ async function migrateAdminUsers(): Promise<void> {
         mustChangePassword: toBool(r.mustChangePassword),
         lastSignInAt: toDate(r.lastSignInAt),
         createdAt: toDate(r.createdAt) ?? new Date(),
-        rollingQuota: r.rollingQuota != null ? Number(r.rollingQuota) : null,
-        weekQuota: r.weekQuota != null ? Number(r.weekQuota) : null,
-        monthQuota: r.monthQuota != null ? Number(r.monthQuota) : null,
+        rollingQuota:
+          r.rollingQuota != null ? BigInt(r.rollingQuota as number) : null,
+        weekQuota: r.weekQuota != null ? BigInt(r.weekQuota as number) : null,
+        monthQuota:
+          r.monthQuota != null ? BigInt(r.monthQuota as number) : null,
         rollingInputTokensUsed: Number(r.rollingInputTokensUsed ?? 0),
         rollingCachedReadTokensUsed: Number(r.rollingCachedReadTokensUsed ?? 0),
         rollingOutputTokensUsed: Number(r.rollingOutputTokensUsed ?? 0),
@@ -253,9 +258,11 @@ async function migrateProviders(): Promise<void> {
         apiKeyAnthropic:
           r.apiKeyAnthropic != null ? String(r.apiKeyAnthropic) : null,
         headersTemplate: String(r.headersTemplate ?? "{}"),
-        rollingQuota: r.rollingQuota != null ? Number(r.rollingQuota) : null,
-        weekQuota: r.weekQuota != null ? Number(r.weekQuota) : null,
-        monthQuota: r.monthQuota != null ? Number(r.monthQuota) : null,
+        rollingQuota:
+          r.rollingQuota != null ? BigInt(r.rollingQuota as number) : null,
+        weekQuota: r.weekQuota != null ? BigInt(r.weekQuota as number) : null,
+        monthQuota:
+          r.monthQuota != null ? BigInt(r.monthQuota as number) : null,
         rollingQuotaUsed: Number(r.rollingQuotaUsed ?? 0),
         weekQuotaUsed: Number(r.weekQuotaUsed ?? 0),
         monthQuotaUsed: Number(r.monthQuotaUsed ?? 0),

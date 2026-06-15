@@ -50,9 +50,9 @@ model Provider {
   baseUrlAnthropic            String? // Anthropic-compatible endpoint URL
   apiKeyAnthropic             String? // API key for Anthropic endpoint
   headersTemplate             String // JSON-encoded extra headers template
-  rollingQuota                Int?
-  weekQuota                   Int?
-  monthQuota                  Int?
+  rollingQuota                BigInt?
+  weekQuota                   BigInt?
+  monthQuota                  BigInt?
   rollingQuotaUsed            Float     @default(0.0)
   weekQuotaUsed               Float     @default(0.0)
   monthQuotaUsed              Float     @default(0.0)
@@ -164,9 +164,9 @@ model AdminUser {
   lastSignInAt                DateTime?
   createdAt                   DateTime  @default(now())
   // Token quota (null or 0 = unlimited) — admin-editable only
-  rollingQuota                Int?
-  weekQuota                   Int?
-  monthQuota                  Int?
+  rollingQuota                BigInt?
+  weekQuota                   BigInt?
+  monthQuota                  BigInt?
   // Per-dimension token counters (weighted by multipliers).
   rollingInputTokensUsed      Float     @default(0)
   rollingCachedReadTokensUsed Float     @default(0)
@@ -297,12 +297,12 @@ model UsageMinute {
 // across any single dimension or combination.
 // -----------------------------------------------------------------------------
 model AggregateReport {
-  id          Int    @id @default(autoincrement())
+  id          Int     @id @default(autoincrement())
   granularity String // "hour" | "day" | "week" | "month"
-  periodStart BigInt @map("period_start") // epoch ms of the period boundary
-  providerId  String @map("provider_id")
-  modelId     String @map("model_id")
-  apiKeyId    String @map("api_key_id")
+  periodStart BigInt  @map("period_start") // epoch ms of the period boundary
+  providerId  String  @map("provider_id")
+  modelId     String  @map("model_id")
+  apiKeyId    String  @map("api_key_id")
   /// True for the single active (current) period row per (granularity, providerId, modelId, apiKeyId).
   /// When a period rolls over, this is set to false and a new row is created with latest=true.
   latest      Boolean @default(false)
