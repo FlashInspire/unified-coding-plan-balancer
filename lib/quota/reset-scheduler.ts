@@ -6,13 +6,13 @@
  * timestamp has been reached; when it has, the corresponding counter
  * is zeroed and the next reset timestamp is computed.
  *
- * Rolling resets fire every 5 hours, anchored to the provider's
- * planStartTime (falls back to createdAt when null).
+ * Provider rolling resets fire every 5 hours, anchored to planStartTime.
+ * User (AdminUser) rolling resets fire every 1 hour (hourly quota).
  * Monthly resets fire on the same day-of-month as planStartTime.
  * Weekly resets fire at Monday 00:00 UTC (unchanged).
  *
- * ApiKey resets use natural calendar:
- * - Rolling: every 5 hours anchored to createdAt
+ * ApiKey / User natural calendar resets:
+ * - Rolling: every N hours anchored to createdAt (1h for users, 5h for providers)
  * - Week: next natural Monday 00:00 UTC
  * - Month: next natural 1st of month 00:00 UTC
  */
@@ -26,8 +26,7 @@ import { userTokenBuffer } from "@/lib/quota/keyTokenBuffer";
 
 export type ResetDimension = "rolling" | "week" | "month";
 
-const ROLLING_INTERVAL_HOURS = 5;
-const ROLLING_INTERVAL_MS = ROLLING_INTERVAL_HOURS * 3_600_000;
+const DEFAULT_ROLLING_INTERVAL_HOURS = 5;
 
 /**
  * Compute the next reset timestamp for a given dimension.
@@ -35,15 +34,17 @@ const ROLLING_INTERVAL_MS = ROLLING_INTERVAL_HOURS * 3_600_000;
  * @param dimension     Which quota dimension
  * @param now           Current time (injectable for testing)
  * @param planStartTime  Provider's plan start anchor (required for rolling & month)
+ * @param intervalHours Rolling interval in hours (default 5 for providers)
  */
 export function computeNextResetAt(
   dimension: ResetDimension,
   now: Date,
   planStartTime: Date,
+  intervalHours = DEFAULT_ROLLING_INTERVAL_HOURS,
 ): Date {
   switch (dimension) {
     case "rolling":
-      return computeNextRollingReset(now, planStartTime);
+      return computeNextRollingReset(now, planStartTime, intervalHours);
     case "week":
       return computeNextWeekReset(now);
     case "month":
@@ -52,8 +53,8 @@ export function computeNextResetAt(
 }
 
 /**
- * Compute the next natural calendar reset for ApiKey.
- * - Rolling: every 5 hours anchored to createdAt
+ * Compute the next natural calendar reset for ApiKey / User.
+ * - Rolling: every N hours anchored to createdAt (N=1 for users, N=5 for legacy)
  * - Week: next Monday 00:00 UTC
  * - Month: next 1st of month 00:00 UTC
  */
@@ -61,10 +62,11 @@ export function computeNextKeyResetAt(
   dimension: ResetDimension,
   now: Date,
   createdAt: Date,
+  intervalHours = DEFAULT_ROLLING_INTERVAL_HOURS,
 ): Date {
   switch (dimension) {
     case "rolling":
-      return computeNextRollingReset(now, createdAt);
+      return computeNextRollingReset(now, createdAt, intervalHours);
     case "week":
       return computeNextNaturalWeekReset(now);
     case "month":
@@ -76,18 +78,23 @@ export function computeNextKeyResetAt(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function computeNextRollingReset(now: Date, planStartTime: Date): Date {
+function computeNextRollingReset(
+  now: Date,
+  planStartTime: Date,
+  intervalHours: number,
+): Date {
+  const intervalMs = intervalHours * 3_600_000;
   const elapsed = now.getTime() - planStartTime.getTime();
 
   // If plan hasn't started yet, the first reset is at planStartTime
   if (elapsed < 0) return new Date(planStartTime);
 
-  // How many full 5-hour intervals have elapsed since planStartTime
-  const intervalsElapsed = Math.floor(elapsed / ROLLING_INTERVAL_MS);
+  // How many full intervals have elapsed since planStartTime
+  const intervalsElapsed = Math.floor(elapsed / intervalMs);
 
   // Next reset is at the start of the next interval
   return new Date(
-    planStartTime.getTime() + (intervalsElapsed + 1) * ROLLING_INTERVAL_MS,
+    planStartTime.getTime() + (intervalsElapsed + 1) * intervalMs,
   );
 }
 
@@ -281,6 +288,9 @@ export async function resetTick(): Promise<ResetTickResult> {
   );
 
   // ── User (AdminUser) quota resets ──────────────────────────────
+  // Users use 1-hour rolling interval (hourly quota).
+
+  const USER_ROLLING_INTERVAL_HOURS = 1;
 
   const users = await prisma.adminUser.findMany({
     where: {},
@@ -312,6 +322,7 @@ export async function resetTick(): Promise<ResetTickResult> {
             "rolling",
             now,
             u.createdAt,
+            USER_ROLLING_INTERVAL_HOURS,
           );
           anyReset = true;
         } else if (!u.rollingQuotaResetAt) {
@@ -319,6 +330,7 @@ export async function resetTick(): Promise<ResetTickResult> {
             "rolling",
             now,
             u.createdAt,
+            USER_ROLLING_INTERVAL_HOURS,
           );
         }
       }

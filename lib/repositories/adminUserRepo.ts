@@ -20,6 +20,10 @@ export const adminUserRepo = {
         mustChangePassword: true,
         lastSignInAt: true,
         createdAt: true,
+        rollingQuota: true,
+        weekQuota: true,
+        monthQuota: true,
+        tokensUsed: true,
       },
       orderBy: { username: "asc" },
     });
@@ -52,6 +56,7 @@ export const adminUserRepo = {
         email: opts?.email ?? null,
         displayName: opts?.displayName ?? null,
         avatarUrl: opts?.avatarUrl ?? null,
+        mustChangePassword: true,
       },
     });
   },
@@ -115,7 +120,8 @@ export const adminUserRepo = {
     },
   ) {
     const data: Record<string, unknown> = {};
-    if (quota.rollingQuota !== undefined) data.rollingQuota = quota.rollingQuota;
+    if (quota.rollingQuota !== undefined)
+      data.rollingQuota = quota.rollingQuota;
     if (quota.weekQuota !== undefined) data.weekQuota = quota.weekQuota;
     if (quota.monthQuota !== undefined) data.monthQuota = quota.monthQuota;
     return prisma.adminUser.update({ where: { id }, data });

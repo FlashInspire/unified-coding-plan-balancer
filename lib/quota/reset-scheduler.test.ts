@@ -179,6 +179,22 @@ describe("computeNextKeyResetAt", () => {
     expect(next.getUTCMinutes()).toBe(0);
   });
 
+  it("rolling with 1h interval (user hourly quota)", () => {
+    const createdAt2 = new Date("2026-06-12T00:00:00Z");
+    const now = new Date("2026-06-12T03:15:00Z");
+    const next = computeNextKeyResetAt("rolling", now, createdAt2, 1);
+    // Slots: 00:00, 01:00, 02:00, 03:00, 04:00, ...
+    expect(next.getUTCHours()).toBe(4);
+    expect(next.getUTCMinutes()).toBe(0);
+  });
+
+  it("rolling with 1h interval, exactly at boundary", () => {
+    const createdAt2 = new Date("2026-06-12T00:00:00Z");
+    const now = new Date("2026-06-12T05:00:00Z");
+    const next = computeNextKeyResetAt("rolling", now, createdAt2, 1);
+    expect(next.getUTCHours()).toBe(6);
+  });
+
   it("week returns next natural Monday", () => {
     // 2026-06-12 is Friday
     const now = new Date("2026-06-12T12:00:00Z");

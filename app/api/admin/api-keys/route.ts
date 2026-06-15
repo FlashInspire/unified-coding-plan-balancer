@@ -24,12 +24,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   try {
     const data = createSchema.parse(await req.json());
-    const isAdmin = session.user.role === "admin";
-    const created = await apiKeyRepo.create(
-      data.name,
-      // Non-admin keys are auto-bound to their owner.
-      isAdmin ? null : session.user.id,
-    );
+    const created = await apiKeyRepo.create(data.name, session.user.id);
     // plaintext returned ONCE
     return Response.json({ data: created });
   } catch (e) {

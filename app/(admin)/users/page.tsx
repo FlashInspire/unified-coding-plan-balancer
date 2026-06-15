@@ -155,6 +155,24 @@ export default function UsersPage() {
             label: "Must Change Password",
             type: "boolean" as const,
           },
+          {
+            name: "rollingQuota",
+            label: t("users.form.rollingQuota"),
+            type: "number" as const,
+            placeholder: "0 = unlimited",
+          },
+          {
+            name: "weekQuota",
+            label: t("users.form.weekQuota"),
+            type: "number" as const,
+            placeholder: "0 = unlimited",
+          },
+          {
+            name: "monthQuota",
+            label: t("users.form.monthQuota"),
+            type: "number" as const,
+            placeholder: "0 = unlimited",
+          },
         ]}
         open={editRow != null}
         onOpenChange={(o) => {
@@ -333,11 +351,15 @@ export default function UsersPage() {
                       : String(n);
                 const parts: string[] = [];
                 if (row.rollingQuota != null && row.rollingQuota > 0)
-                  parts.push(`R: ${fmt(row.tokensUsed)}/${fmt(row.rollingQuota)}`);
+                  parts.push(
+                    `H: ${fmt(row.tokensUsed)}/${fmt(row.rollingQuota)}`,
+                  );
                 if (row.weekQuota != null && row.weekQuota > 0)
                   parts.push(`W: ${fmt(row.tokensUsed)}/${fmt(row.weekQuota)}`);
                 if (row.monthQuota != null && row.monthQuota > 0)
-                  parts.push(`M: ${fmt(row.tokensUsed)}/${fmt(row.monthQuota)}`);
+                  parts.push(
+                    `M: ${fmt(row.tokensUsed)}/${fmt(row.monthQuota)}`,
+                  );
                 return (
                   <span className="text-xs text-muted-foreground">
                     {parts.length > 0 ? parts.join(" ") : "∞"}

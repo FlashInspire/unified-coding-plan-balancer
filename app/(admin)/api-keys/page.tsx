@@ -45,7 +45,12 @@ export default function ApiKeysPage() {
           title={t("apiKeys.dialog.createTitle")}
           triggerLabel={t("apiKeys.dialog.createTrigger")}
           fields={[
-            { name: "name", label: t("apiKeys.form.name"), type: "text", required: true },
+            {
+              name: "name",
+              label: t("apiKeys.form.name"),
+              type: "text",
+              required: true,
+            },
           ]}
           onSubmit={async (v) => {
             const r = await apiFetch<{ data: CreatedApiKey }>(
@@ -162,6 +167,19 @@ export default function ApiKeysPage() {
               },
             },
             {
+              key: "owner",
+              label: t("apiKeys.table.owner"),
+              className: "w-[140px]",
+              render: (r) => {
+                const k = r as unknown as ApiKeyRow;
+                return (
+                  <span className="text-xs text-muted-foreground truncate block">
+                    {k.owner?.displayName || k.owner?.username || "—"}
+                  </span>
+                );
+              },
+            },
+            {
               key: "lastUsedAt",
               label: t("apiKeys.table.lastUsed"),
               className: "w-[145px]",
@@ -207,7 +225,11 @@ export default function ApiKeysPage() {
                     await load();
                   }}
                   className="inline-flex items-center justify-center h-7 w-7 rounded hover:bg-accent"
-                  title={k.enabled ? t("apiKeys.action.disable") : t("apiKeys.action.enable")}
+                  title={
+                    k.enabled
+                      ? t("apiKeys.action.disable")
+                      : t("apiKeys.action.enable")
+                  }
                 >
                   <Power
                     className={`h-3 w-3 ${
@@ -220,7 +242,8 @@ export default function ApiKeysPage() {
           }}
           onDelete={async (id) => {
             const k = data.find((d) => d.id === id);
-            if (!confirm(t("apiKeys.confirmDelete", { name: k?.name ?? id }))) return;
+            if (!confirm(t("apiKeys.confirmDelete", { name: k?.name ?? id })))
+              return;
             await apiFetch(`/api/admin/api-keys/${id}`, { method: "DELETE" });
             await load();
           }}
@@ -257,7 +280,11 @@ function KeyCallLogs({ apiKeyId }: { apiKeyId: string }) {
   }, [loadLogs]);
 
   if (loading)
-    return <div className="text-xs text-muted-foreground">{t("apiKeys.logs.loading")}</div>;
+    return (
+      <div className="text-xs text-muted-foreground">
+        {t("apiKeys.logs.loading")}
+      </div>
+    );
   if (logs.length === 0)
     return (
       <div className="text-xs text-muted-foreground italic">
@@ -282,14 +309,30 @@ function KeyCallLogs({ apiKeyId }: { apiKeyId: string }) {
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b bg-muted/50">
-              <th className="px-2 py-2 text-left font-medium">{t("apiKeys.logs.time")}</th>
-              <th className="px-2 py-2 text-left font-medium">{t("apiKeys.logs.model")}</th>
-              <th className="px-2 py-2 text-left font-medium">{t("apiKeys.logs.provider")}</th>
-              <th className="px-2 py-2 text-left font-medium">{t("apiKeys.logs.status")}</th>
-              <th className="px-2 py-2 text-left font-medium">{t("apiKeys.logs.latency")}</th>
-              <th className="px-2 py-2 text-left font-medium">{t("apiKeys.logs.inTokens")}</th>
-              <th className="px-2 py-2 text-left font-medium">{t("apiKeys.logs.outTokens")}</th>
-              <th className="px-2 py-2 text-left font-medium">{t("apiKeys.logs.ttft")}</th>
+              <th className="px-2 py-2 text-left font-medium">
+                {t("apiKeys.logs.time")}
+              </th>
+              <th className="px-2 py-2 text-left font-medium">
+                {t("apiKeys.logs.model")}
+              </th>
+              <th className="px-2 py-2 text-left font-medium">
+                {t("apiKeys.logs.provider")}
+              </th>
+              <th className="px-2 py-2 text-left font-medium">
+                {t("apiKeys.logs.status")}
+              </th>
+              <th className="px-2 py-2 text-left font-medium">
+                {t("apiKeys.logs.latency")}
+              </th>
+              <th className="px-2 py-2 text-left font-medium">
+                {t("apiKeys.logs.inTokens")}
+              </th>
+              <th className="px-2 py-2 text-left font-medium">
+                {t("apiKeys.logs.outTokens")}
+              </th>
+              <th className="px-2 py-2 text-left font-medium">
+                {t("apiKeys.logs.ttft")}
+              </th>
             </tr>
           </thead>
           <tbody>

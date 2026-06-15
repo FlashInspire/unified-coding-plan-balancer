@@ -14,7 +14,13 @@ export interface ApiKeyPatch {
 export const apiKeyRepo = {
   async list(ownerId?: string | null): Promise<ApiKeyRow[]> {
     const where = ownerId !== undefined ? { ownerId } : undefined;
-    return prisma.apiKey.findMany({ where, orderBy: { createdAt: "desc" } });
+    return prisma.apiKey.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      include: {
+        owner: { select: { id: true, username: true, displayName: true } },
+      },
+    }) as unknown as ApiKeyRow[];
   },
 
   async findById(id: string): Promise<ApiKeyRow | null> {
@@ -30,17 +36,14 @@ export const apiKeyRepo = {
     return rows.map((r) => r.id);
   },
 
-  async create(
-    name: string,
-    ownerId?: string | null,
-  ): Promise<CreatedApiKey> {
+  async create(name: string, ownerId: string): Promise<CreatedApiKey> {
     const plaintext = generatePlaintext();
     const keyHash = sha256Hex(plaintext);
     const row = await prisma.apiKey.create({
       data: {
         name,
         keyHash,
-        ownerId: ownerId ?? null,
+        ownerId,
         enabled: true,
       },
     });
@@ -64,5 +67,4 @@ export const apiKeyRepo = {
   async delete(id: string): Promise<void> {
     await prisma.apiKey.delete({ where: { id } });
   },
-
 };

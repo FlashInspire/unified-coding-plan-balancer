@@ -91,6 +91,7 @@ export interface ApiKeyRow {
   keyHash: string;
   name: string;
   ownerId: string | null;
+  owner?: { id: string; username: string; displayName: string | null } | null;
   enabled: boolean;
   createdAt: Date;
   lastUsedAt: Date | null;
