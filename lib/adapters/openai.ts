@@ -8,7 +8,7 @@ import {
 } from "@/lib/adapters/base";
 import type { ResolvedProvider } from "@/lib/types";
 
-function body(req: NormalizedChatRequest, stream: boolean) {
+export function buildUpstreamBody(req: NormalizedChatRequest, stream: boolean) {
   // System defaults: applied only when the client did not send the field.
   // Client extraParams spread afterwards overrides these.
   const out: Record<string, unknown> = {};
@@ -30,22 +30,18 @@ function body(req: NormalizedChatRequest, stream: boolean) {
   out.max_tokens =
     (req.extraParams?.max_tokens as number | undefined) ?? req.maxTokens;
   out.stream = stream;
-  // OpenAI-compatible APIs only include `usage` in the final streaming chunk
-  // when stream_options is set. Without this, token counts are always 0.
-  // ALWAYS force include_usage: true regardless of what the client requests.
+  // The gateway fully controls stream_options and must NOT forward the
+  // client's. Some clients send extra / non-standard stream_options sub-fields
+  // which cause certain upstreams to ignore include_usage and omit token
+  // counts entirely. We always OVERWRITE (never spread) so the upstream
+  // receives exactly { include_usage: true } regardless of the client request.
   if (stream) {
-    out.stream_options = {
-      ...(out.stream_options as Record<string, unknown>),
-      include_usage: true,
-    };
+    out.stream_options = { include_usage: true };
   } else {
-    // Non-streaming: also request usage explicitly. Some providers honour
-    // stream_options even for non-streaming; others use a top-level usage
-    // include flag. Setting both covers all OpenAI-compatible variants.
-    out.stream_options = {
-      ...(out.stream_options as Record<string, unknown>),
-      include_usage: true,
-    };
+    // Non-streaming: drop any client stream_options and request usage
+    // explicitly. Some providers honour stream_options even for non-streaming;
+    // others use a top-level usage include flag — set both for coverage.
+    out.stream_options = { include_usage: true };
     out.usage = { include: true };
   }
 
@@ -72,7 +68,7 @@ export class OpenAIAdapter implements ProviderAdapter {
     const res = await fetch(url, {
       method: "POST",
       headers: headers(provider),
-      body: JSON.stringify(body(req, false)),
+      body: JSON.stringify(buildUpstreamBody(req, false)),
       signal,
     });
     if (!res.ok) {
@@ -114,7 +110,7 @@ export class OpenAIAdapter implements ProviderAdapter {
     const res = await fetch(url, {
       method: "POST",
       headers: headers(provider),
-      body: JSON.stringify(body(req, true)),
+      body: JSON.stringify(buildUpstreamBody(req, true)),
       signal,
     });
     if (!res.ok) {

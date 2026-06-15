@@ -86,7 +86,9 @@ export async function POST(req: Request): Promise<Response> {
   const directProviderId = slashIdx > 0 ? modelStr.slice(0, slashIdx) : null;
   const directModelId = slashIdx > 0 ? modelStr.slice(slashIdx + 1) : null;
 
-  const stream = rawBody.stream === true;
+  // Some clients send `stream` as the string "true" rather than a boolean.
+  // Treat both as streaming so usage collection takes the streaming path.
+  const stream = rawBody.stream === true || rawBody.stream === "true";
 
   try {
     if (stream) {

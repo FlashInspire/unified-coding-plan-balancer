@@ -26,9 +26,11 @@ import { providerModelRepo } from "@/lib/repositories/providerModelRepo";
 import type { RoutingCandidate } from "@/lib/repositories/providerModelRepo";
 import { providerRepo } from "@/lib/repositories/providerRepo";
 import {
+  incrementConsecutive429,
   incrementQuotaExhaustedRetry,
   markQuotaRunningOut,
   markTransientFailure,
+  resetConsecutive429,
   selectCandidates,
 } from "@/lib/routing/selectCandidate";
 import { getStickyProvider, setStickyProvider } from "@/lib/routing/sticky";
@@ -397,6 +399,9 @@ export async function dispatchChat(
         c.pm.id,
         env.STICKY_TTL_MS,
       ).catch(() => {});
+      // A successful request resets the consecutive-429 counter so the
+      // provider is not prematurely marked as "Running out".
+      resetConsecutive429(c.provider.id);
       return { response: resp, provider: c.provider, pm: c.pm, params };
     } catch (err) {
       activeRequests.decr(c.provider.id);
@@ -428,6 +433,9 @@ export async function dispatchChat(
       });
       if (isRetryable(err)) {
         markTransientFailure(c.provider.id);
+        // Track consecutive 429s: if the threshold is reached the provider
+        // is automatically marked as "Running out" and excluded from routing.
+        if (status === 429) incrementConsecutive429(c.provider.id);
         continue;
       }
       // Non-retryable error: forward the original upstream error to the client.
@@ -601,13 +609,24 @@ export async function dispatchChatStream(
     } catch (err) {
       activeRequests.decr(c.provider.id);
       const status = err instanceof UpstreamError ? err.status : 0;
+      const message = err instanceof Error ? err.message : "Unknown";
+      // Close out the in-flight row for this failed attempt so it never stays
+      // stuck at status=0 (InFlight). Each candidate attempt owns its own row.
+      if (requestId != null) {
+        emitMetricsUpdate(requestId, started, {
+          status: status || 500,
+          errorCode: message.slice(0, 200),
+          latencyMs: Date.now() - started,
+        });
+      }
       failures.push({
         providerId: c.provider.id,
         status,
-        message: err instanceof Error ? err.message : "Unknown",
+        message,
       });
       if (isRetryable(err)) {
         markTransientFailure(c.provider.id);
+        if (status === 429) incrementConsecutive429(c.provider.id);
         continue;
       }
       // Non-retryable error: forward the original upstream error to the client.
@@ -642,7 +661,6 @@ function wrapStream(
     async *[Symbol.asyncIterator]() {
       let ttft: number | null = null;
       let usage = { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 };
-      let streamOutputTokens = 0;
       let finishReason: string | null = null;
       let status = 200;
       let errorCode: string | null = null;
@@ -659,7 +677,6 @@ function wrapStream(
               });
             }
           }
-          if (chunk.delta) streamOutputTokens++;
           // Adopt usage from the final chunk. Adapters now always yield a
           // concrete object (even {0,0,0}) so this reliably captures
           // provider-reported token counts for every stream.
@@ -671,38 +688,62 @@ function wrapStream(
         status = err instanceof UpstreamError ? err.status : 500;
         errorCode =
           err instanceof Error ? err.message.slice(0, 200) : "Unknown";
+        // Track consecutive 429s mid-stream: if the threshold is reached
+        // the provider is marked as "Running out" and excluded from routing.
+        if (status === 429) incrementConsecutive429(ctx.provider.id);
         throw err;
       } finally {
         activeRequests.decr(ctx.provider.id);
         const latency = Date.now() - ctx.started;
-        const outTokens = streamOutputTokens || usage.outputTokens;
+        // Record the provider-reported output tokens verbatim. When the
+        // upstream returns no usage, this stays 0 (we never estimate).
+        const outTokens = usage.outputTokens;
         const tps =
           outTokens > 0 && ttft != null && latency > ttft
             ? (outTokens / (latency - ttft)) * 1000
             : null;
-        emitMetrics({
-          requestId: ctx.requestId ?? undefined,
-          ts: ctx.started,
-          apiKeyId: ctx.ctx.apiKeyId,
-          modelId: ctx.modelId,
-          providerId: ctx.provider.id,
-          providerName: ctx.provider.name,
-          realModelId: ctx.params.realModelId,
-          apiModeIn: ctx.ctx.apiModeIn,
-          apiModeOut: ctx.ctx.apiModeIn,
-          stream: true,
-          status,
-          errorCode,
-          ttftMs: ttft,
-          tpsOut: tps,
-          latencyMs: latency,
-          inputTokens: usage.inputTokens,
-          cachedInputTokens: usage.cachedInputTokens,
-          outputTokens: outTokens,
-          ip: ctx.ctx.ip,
-          apiKeyName: ctx.ctx.apiKeyName,
-          userAgent: ctx.ctx.userAgent,
-        });
+        if (ctx.requestId != null) {
+          // Synchronously close out the in-flight row. A stream may terminate
+          // by success, upstream error, or client abort; in every case the row
+          // must leave status=0 (InFlight) immediately with its final HTTP
+          // status, rather than relying on a buffered flush that can be
+          // delayed or lost on restart.
+          emitMetricsUpdate(ctx.requestId, ctx.started, {
+            status,
+            errorCode,
+            ttftMs: ttft,
+            tpsOut: tps,
+            latencyMs: latency,
+            inputTokens: usage.inputTokens,
+            cachedInputTokens: usage.cachedInputTokens,
+            outputTokens: outTokens,
+          });
+        } else {
+          // No in-flight row id (the start insert failed) — record via a
+          // buffered insert instead.
+          emitMetrics({
+            ts: ctx.started,
+            apiKeyId: ctx.ctx.apiKeyId,
+            modelId: ctx.modelId,
+            providerId: ctx.provider.id,
+            providerName: ctx.provider.name,
+            realModelId: ctx.params.realModelId,
+            apiModeIn: ctx.ctx.apiModeIn,
+            apiModeOut: ctx.ctx.apiModeIn,
+            stream: true,
+            status,
+            errorCode,
+            ttftMs: ttft,
+            tpsOut: tps,
+            latencyMs: latency,
+            inputTokens: usage.inputTokens,
+            cachedInputTokens: usage.cachedInputTokens,
+            outputTokens: outTokens,
+            ip: ctx.ctx.ip,
+            apiKeyName: ctx.ctx.apiKeyName,
+            userAgent: ctx.ctx.userAgent,
+          });
+        }
         if (status === 200) {
           // Streaming request completed successfully; count one successful call.
           try {
@@ -738,6 +779,8 @@ function wrapStream(
             ctx.pm.id,
             env.STICKY_TTL_MS,
           ).catch(() => {});
+          // A successful stream resets the consecutive-429 counter.
+          resetConsecutive429(ctx.provider.id);
         }
         // Touch finishReason to avoid "unused" lint complaint.
         void finishReason;
@@ -860,6 +903,7 @@ export async function dispatchDirectChat(
     } catch {
       /* never block */
     }
+    resetConsecutive429(c.provider.id);
     return { response: resp, provider: c.provider, pm: c.pm, params };
   } catch (err) {
     activeRequests.decr(c.provider.id);
@@ -888,6 +932,7 @@ export async function dispatchDirectChat(
       apiKeyName: ctx.apiKeyName,
       userAgent: ctx.userAgent,
     });
+    if (status === 429) incrementConsecutive429(c.provider.id);
     const upstreamStatus =
       err instanceof UpstreamError ? err.status : undefined;
     const upstreamBody =
@@ -977,6 +1022,19 @@ export async function dispatchDirectChatStream(
     return { iterator: wrapped, provider: c.provider, pm: c.pm, params };
   } catch (err) {
     activeRequests.decr(c.provider.id);
+    // Close out the in-flight row so a synchronous failure here is not left
+    // stuck at status=0 (InFlight).
+    if (requestId != null) {
+      const status = err instanceof UpstreamError ? err.status : 0;
+      emitMetricsUpdate(requestId, started, {
+        status: status || 500,
+        errorCode: err instanceof Error ? err.message.slice(0, 200) : "Unknown",
+        latencyMs: Date.now() - started,
+      });
+    }
+    if (err instanceof UpstreamError && err.status === 429) {
+      incrementConsecutive429(c.provider.id);
+    }
     throw err;
   }
 }
