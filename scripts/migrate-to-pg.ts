@@ -395,31 +395,35 @@ async function migrateSystemSettings(): Promise<void> {
   counts.SystemSetting = rows.length;
 }
 
-try {
-  await migrateAdminUsers();
-  await migrateUserPreferences();
-  await migrateModels();
-  await migrateProviders();
-  await migrateProviderModels();
-  await migrateApiKeys();
-  await migrateStickyRoutes();
-  await migrateSystemSettings();
+(async () => {
+  try {
+    await migrateAdminUsers();
+    await migrateUserPreferences();
+    await migrateModels();
+    await migrateProviders();
+    await migrateProviderModels();
+    await migrateApiKeys();
+    await migrateStickyRoutes();
+    await migrateSystemSettings();
 
-  // ── Summary ─────────────────────────────────────────────────────
-  console.log("\n╔══════════════════════════════════════════════╗");
-  console.log("║   Migration Complete                         ║");
-  console.log("╚══════════════════════════════════════════════╝\n");
-  for (const [table, count] of Object.entries(counts)) {
-    console.log(`  ✅ ${table}: ${count} row(s)`);
+    // ── Summary ─────────────────────────────────────────────────────
+    console.log("\n╔══════════════════════════════════════════════╗");
+    console.log("║   Migration Complete                         ║");
+    console.log("╚══════════════════════════════════════════════╝\n");
+    for (const [table, count] of Object.entries(counts)) {
+      console.log(`  ✅ ${table}: ${count} row(s)`);
+    }
+    console.log("\n📝 Next steps:");
+    console.log(
+      "  1. Run: npx prisma migrate dev --name init_pg --create-only",
+    );
+    console.log("     (to baseline the migration history)");
+    console.log("  2. Verify: npx prisma studio");
+    console.log("  3. Start app: pnpm dev");
+  } catch (err) {
+    console.error("\n❌ Migration failed:", err);
+    process.exit(1);
+  } finally {
+    await prisma.$disconnect();
   }
-  console.log("\n📝 Next steps:");
-  console.log("  1. Run: npx prisma migrate dev --name init_pg --create-only");
-  console.log("     (to baseline the migration history)");
-  console.log("  2. Verify: npx prisma studio");
-  console.log("  3. Start app: pnpm dev");
-} catch (err) {
-  console.error("\n❌ Migration failed:", err);
-  process.exit(1);
-} finally {
-  await prisma.$disconnect();
-}
+})();
