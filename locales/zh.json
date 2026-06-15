@@ -81,6 +81,7 @@
   "providers.quota.rolling": "滚动:",
   "providers.quota.week": "周:",
   "providers.quota.month": "月:",
+  "providers.quota.runningOut": "配额耗尽",
   "providers.endpoint.openai": "OpenAI",
   "providers.endpoint.anthropic": "Anthropic",
   "providers.dialog.createTitle": "新建供应商",

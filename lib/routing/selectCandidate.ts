@@ -60,38 +60,6 @@ export function markQuotaRunningOut(providerId: string): void {
 export function resetQuotaRetries(providerId: string): void {
   quotaExhaustedRetries.delete(providerId);
   quotaRunningOutSet.delete(providerId);
-  consecutive429Counters.delete(providerId);
-}
-
-// ---------------------------------------------------------------------------
-// Consecutive 429 tracking
-// ---------------------------------------------------------------------------
-
-/**
- * In-memory counter for consecutive upstream 429 responses per provider.
- * When this reaches MAX_CONSECUTIVE_429 the provider is marked as "Running
- * out" and excluded from routing until quota resets. A single successful
- * request resets the counter.
- */
-const consecutive429Counters = new Map<string, number>();
-
-/**
- * Increment the consecutive-429 counter for a provider. If the counter
- * reaches the threshold, mark the provider as "Running out" and return true.
- */
-export function incrementConsecutive429(providerId: string): boolean {
-  const next = (consecutive429Counters.get(providerId) ?? 0) + 1;
-  consecutive429Counters.set(providerId, next);
-  if (next >= env.MAX_CONSECUTIVE_429) {
-    markQuotaRunningOut(providerId);
-    return true;
-  }
-  return false;
-}
-
-/** Reset the consecutive-429 counter for a provider (called on success). */
-export function resetConsecutive429(providerId: string): void {
-  consecutive429Counters.delete(providerId);
 }
 
 // Score weights — must sum to 1.0

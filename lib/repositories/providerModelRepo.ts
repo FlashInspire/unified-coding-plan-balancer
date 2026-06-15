@@ -113,18 +113,15 @@ export const providerModelRepo = {
         },
       },
       include: {
-        provider: { include: { quotaSnapshot: true } },
+        provider: true,
       },
     });
     return rows.map((r) => {
-      const snap = r.provider.quotaSnapshot;
-      const { quotaSnapshot, ...providerOnly } = r.provider;
-      void quotaSnapshot;
       return {
         pm: stripProvider(r),
-        provider: providerOnly as unknown as ProviderRow,
-        usagePercent: snap?.usagePercent ?? null,
-        healthy: snap?.healthy ?? true,
+        provider: r.provider as unknown as ProviderRow,
+        usagePercent: null,
+        healthy: true,
         activeRequests: activeRequests.get(r.provider.id),
       };
     });
@@ -141,18 +138,15 @@ export const providerModelRepo = {
     const row = await prisma.providerModel.findFirst({
       where: { providerId, modelId },
       include: {
-        provider: { include: { quotaSnapshot: true } },
+        provider: true,
       },
     });
     if (!row) return null;
-    const snap = row.provider.quotaSnapshot;
-    const { quotaSnapshot, ...providerOnly } = row.provider;
-    void quotaSnapshot;
     return {
       pm: stripProvider(row),
-      provider: providerOnly as unknown as ProviderRow,
-      usagePercent: snap?.usagePercent ?? null,
-      healthy: snap?.healthy ?? true,
+      provider: row.provider as unknown as ProviderRow,
+      usagePercent: null,
+      healthy: true,
       activeRequests: activeRequests.get(row.provider.id),
     };
   },

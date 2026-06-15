@@ -281,6 +281,11 @@ export default function ProvidersPage() {
                 <span className="text-xs tabular-nums">
                   {anyQuota ? `${Math.round(maxPct)}%` : "∞"}
                 </span>
+                {p.quotaRunningOut && (
+                  <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">
+                    {t("providers.quota.runningOut")}
+                  </Badge>
+                )}
               </div>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs space-y-1">

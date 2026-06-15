@@ -5,8 +5,6 @@ import {
   isQuotaRunningOut,
   markQuotaRunningOut,
   resetQuotaRetries,
-  incrementConsecutive429,
-  resetConsecutive429,
 } from "@/lib/routing/selectCandidate";
 import type { RoutingCandidate } from "@/lib/repositories/providerModelRepo";
 import type { ProviderModelRow, ProviderRow } from "@/lib/types";
@@ -221,49 +219,5 @@ describe("quota retry tracking", () => {
 
     // Counter should be reset, so next increment starts at 1
     expect(incrementQuotaExhaustedRetry("test-provider")).toBe(1);
-  });
-});
-
-describe("consecutive 429 tracking", () => {
-  beforeEach(() => {
-    resetConsecutive429("test-provider");
-    resetQuotaRetries("test-provider");
-  });
-
-  it("incrementConsecutive429 increments counter but does not mark Running out below threshold", () => {
-    expect(incrementConsecutive429("test-provider")).toBe(false);
-    expect(incrementConsecutive429("test-provider")).toBe(false);
-    // 2 consecutive 429s — still below default threshold of 3
-    expect(isQuotaRunningOut("test-provider")).toBe(false);
-  });
-
-  it("incrementConsecutive429 marks Running out when threshold is reached", () => {
-    incrementConsecutive429("test-provider"); // 1
-    incrementConsecutive429("test-provider"); // 2
-    const marked = incrementConsecutive429("test-provider"); // 3 → threshold
-    expect(marked).toBe(true);
-    expect(isQuotaRunningOut("test-provider")).toBe(true);
-  });
-
-  it("resetConsecutive429 clears the counter", () => {
-    incrementConsecutive429("test-provider");
-    incrementConsecutive429("test-provider");
-    resetConsecutive429("test-provider");
-    // After reset, next increment starts at 1
-    expect(incrementConsecutive429("test-provider")).toBe(false);
-  });
-
-  it("provider marked Running out by 429s is excluded from routing", () => {
-    // Simulate 3 consecutive 429s
-    incrementConsecutive429("test-provider");
-    incrementConsecutive429("test-provider");
-    incrementConsecutive429("test-provider");
-    expect(isQuotaRunningOut("test-provider")).toBe(true);
-
-    const out = selectCandidates([
-      mkCandidate("test-provider", 50, true),
-      mkCandidate("normal", 50, true),
-    ]);
-    expect(out.map((c) => c.provider.id)).toEqual(["normal"]);
   });
 });

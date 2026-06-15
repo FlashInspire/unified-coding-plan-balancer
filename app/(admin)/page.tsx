@@ -20,12 +20,9 @@ import {
   Server,
   Layers,
   Key,
-  BarChart3,
   ScrollText,
   Users,
   Settings,
-  AlertTriangle,
-  CheckCircle2,
   TrendingUp,
   Zap,
 } from "lucide-react";
@@ -53,7 +50,6 @@ interface ModelCount {
 
 interface DashboardData {
   requestCounts: { hour: number; day: number; week: number; month: number };
-  quotaSummary: { total: number; nearLimit: number };
   modelCounts: ModelCount[];
   tokenCounts: TokenCount[];
 }
@@ -155,10 +151,6 @@ export default function AdminHome() {
             value={rc.month}
             pct={(rc.month / maxRequests) * 100}
             color="hsl(30, 91%, 55%)"
-          />
-          <QuotaStatCard
-            nearLimit={data.quotaSummary.nearLimit}
-            total={data.quotaSummary.total}
           />
         </div>
       ) : null}
@@ -347,12 +339,6 @@ export default function AdminHome() {
             desc: t("dashboard.nav.apiKeysDesc"),
           },
           {
-            href: "/quota",
-            label: t("dashboard.nav.quota"),
-            icon: BarChart3,
-            desc: t("dashboard.nav.quotaDesc"),
-          },
-          {
             href: "/logs",
             label: t("dashboard.nav.logs"),
             icon: ScrollText,
@@ -415,36 +401,6 @@ function StatCard({
             {typeof value === "number" ? value.toLocaleString() : value}
           </div>
           <div className="text-xs text-muted-foreground">{label}</div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function QuotaStatCard({
-  nearLimit,
-  total,
-}: {
-  nearLimit: number;
-  total: number;
-}) {
-  const t = useT();
-  const hasIssues = nearLimit > 0;
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-3 py-3 px-4">
-        {hasIssues ? (
-          <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0" />
-        ) : (
-          <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
-        )}
-        <div>
-          <div className="text-lg font-semibold tabular-nums">
-            {hasIssues ? `${nearLimit}/${total}` : t("dashboard.quota.okValue")}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {hasIssues ? t("dashboard.quota.nearLimit") : t("dashboard.quota.ok")}
-          </div>
         </div>
       </CardContent>
     </Card>

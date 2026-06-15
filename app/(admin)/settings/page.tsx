@@ -113,8 +113,10 @@ function UserProfileCard() {
       // Apply immediately.
       if (key === "language") {
         setLocale(value);
+        localStorage.setItem("ucpb:lang", value);
       } else {
         setTheme(value as "light" | "dark" | "system");
+        localStorage.setItem("ucpb:theme", value);
       }
       // Update session so JWT carries the new preference.
       await updateSession({ [key]: value });

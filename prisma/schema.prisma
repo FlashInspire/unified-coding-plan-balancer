@@ -77,8 +77,6 @@ model Provider {
   updatedAt                   DateTime  @updatedAt
 
   providerModels ProviderModel[]
-  quotaSnapshot  ProviderQuotaSnapshot?
-}
 
 // -----------------------------------------------------------------------------
 // ProviderModel — instance of a Model on a specific Provider, with overrides.
@@ -165,19 +163,6 @@ model UserPreference {
   updatedAt DateTime @updatedAt
 
   user AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-// -----------------------------------------------------------------------------
-// ProviderQuotaSnapshot — cached remaining quota, refreshed by background worker.
-// Router reads this table; never hits upstream quota APIs on the request path.
-// -----------------------------------------------------------------------------
-model ProviderQuotaSnapshot {
-  providerId   String   @id
-  usagePercent Float? // 0–100; lower = more remaining; null = unknown
-  fetchedAt    DateTime
-  healthy      Boolean  @default(true)
-
-  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
 }
 
 // -----------------------------------------------------------------------------

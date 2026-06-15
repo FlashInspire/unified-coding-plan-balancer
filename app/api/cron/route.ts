@@ -8,8 +8,7 @@
  * 2. aggregate    — aggregate the previous minute's logs into usage_minute
  * 3. keyTokenFlush — flush buffered API key token increments to DB
  * 4. reset        — reset expired provider & key quota counters
- * 5. computeUsage — recompute provider quota usage snapshots
- * 6. archive      — purge expired log/stat shards (once per day)
+ * 5. archive      — purge expired log/stat shards (once per day)
  */
 import { flushOnce } from "@/lib/metrics/flusher";
 import {
@@ -19,7 +18,6 @@ import {
 } from "@/lib/metrics/aggregator";
 import { archiveOnce } from "@/lib/metrics/archiver";
 import { resetTick } from "@/lib/quota/reset-scheduler";
-import { computeAllQuotaSnapshots } from "@/lib/workers/bootstrap";
 import { keyTokenBuffer } from "@/lib/quota/keyTokenBuffer";
 import { apiKeyRepo } from "@/lib/repositories/apiKeyRepo";
 
@@ -76,17 +74,7 @@ export async function GET(): Promise<Response> {
     jobs.reset = { error: err instanceof Error ? err.message : "unknown" };
   }
 
-  // 5. Recompute provider quota usage snapshots
-  try {
-    await computeAllQuotaSnapshots();
-    jobs.computeUsage = { ok: true };
-  } catch (err) {
-    jobs.computeUsage = {
-      error: err instanceof Error ? err.message : "unknown",
-    };
-  }
-
-  // 6. Archive (once per day)
+  // 5. Archive (once per day)
   try {
     if (ts - lastArchiveAt >= ARCHIVE_INTERVAL_MS) {
       const result = archiveOnce();

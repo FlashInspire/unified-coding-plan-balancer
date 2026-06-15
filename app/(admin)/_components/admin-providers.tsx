@@ -8,15 +8,37 @@ import { ThemeProvider } from "./theme-provider";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Messages = Record<string, any>;
 
+const LS_LANG = "ucpb:lang";
+const LS_THEME = "ucpb:theme";
+
 /**
  * Client wrapper that loads the user's language/theme preferences from the
  * session and initializes the i18n + theme providers accordingly.
+ *
+ * Preferences are cached in localStorage so they survive the initial render
+ * flash before the session JWT is loaded. The session always takes precedence
+ * once available.
  */
 export function AdminProviders({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
-  const locale = (session?.user as { language?: string })?.language ?? "en";
+  const sessionLang = (session?.user as { language?: string })?.language;
+  const sessionTheme = (session?.user as { theme?: string })?.theme;
+
+  // Resolve: session > localStorage > default
+  const locale =
+    sessionLang ??
+    (typeof window !== "undefined" ? localStorage.getItem(LS_LANG) : null) ??
+    "en";
   const theme =
-    (session?.user as { theme?: string })?.theme ?? "system";
+    sessionTheme ??
+    (typeof window !== "undefined" ? localStorage.getItem(LS_THEME) : null) ??
+    "system";
+
+  // Persist to localStorage whenever session provides a value.
+  useEffect(() => {
+    if (sessionLang) localStorage.setItem(LS_LANG, sessionLang);
+    if (sessionTheme) localStorage.setItem(LS_THEME, sessionTheme);
+  }, [sessionLang, sessionTheme]);
 
   const [messages, setMessages] = useState<Messages>({});
   const [ready, setReady] = useState(false);

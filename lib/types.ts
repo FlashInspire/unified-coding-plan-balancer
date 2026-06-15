@@ -109,13 +109,6 @@ export interface AdminUserRow {
   createdAt: Date;
 }
 
-export interface ProviderQuotaSnapshotRow {
-  providerId: string;
-  usagePercent: number | null;
-  fetchedAt: Date;
-  healthy: boolean;
-}
-
 /** Resolved view of a provider with its decoded headers (apiKey still raw). */
 export interface ResolvedProvider {
   id: string;

@@ -1,6 +1,5 @@
 import { requireAdmin } from "../_lib/guard";
 import { recentLogs } from "@/lib/metrics/queryRouter";
-import { providerRepo } from "@/lib/repositories/providerRepo";
 
 export const dynamic = "force-dynamic";
 
@@ -67,11 +66,6 @@ export async function GET(req: Request): Promise<Response> {
     }
   }
 
-  // Quota summary
-  const providers = await providerRepo.list();
-  const total = providers.length;
-  const nearLimit = providers.filter((p) => p.quotaRunningOut).length;
-
   // Model counts sorted descending
   const modelCounts = [...modelMap.values()]
     .map(({ model_id, requests }) => ({ model_id, requests }))
@@ -96,7 +90,6 @@ export async function GET(req: Request): Promise<Response> {
 
   return Response.json({
     requestCounts,
-    quotaSummary: { total, nearLimit },
     modelCounts,
     tokenCounts,
   });

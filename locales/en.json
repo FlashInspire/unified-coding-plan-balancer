@@ -81,6 +81,7 @@
   "providers.quota.rolling": "Rolling:",
   "providers.quota.week": "Week:",
   "providers.quota.month": "Month:",
+  "providers.quota.runningOut": "Running out",
   "providers.endpoint.openai": "OpenAI",
   "providers.endpoint.anthropic": "Anthropic",
   "providers.dialog.createTitle": "New Provider",

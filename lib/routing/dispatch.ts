@@ -26,11 +26,9 @@ import { providerModelRepo } from "@/lib/repositories/providerModelRepo";
 import type { RoutingCandidate } from "@/lib/repositories/providerModelRepo";
 import { providerRepo } from "@/lib/repositories/providerRepo";
 import {
-  incrementConsecutive429,
   incrementQuotaExhaustedRetry,
   markQuotaRunningOut,
   markTransientFailure,
-  resetConsecutive429,
   selectCandidates,
 } from "@/lib/routing/selectCandidate";
 import { getStickyProvider, setStickyProvider } from "@/lib/routing/sticky";
@@ -114,6 +112,79 @@ function isRetryable(err: unknown): boolean {
     return true;
   }
   return false;
+}
+
+/**
+ * Probe a provider on 429: retry the same call up to RUNNING_OUT_PROBE_TIMES
+ * times. If all probes return 429, mark the provider as "Running out" and
+ * return the last 429 error so the caller can move to the next candidate.
+ *
+ * Non-429 errors are re-thrown immediately without probing.
+ */
+async function with429Probe<T>(
+  providerId: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  let last429: UpstreamError | null = null;
+  for (let probe = 0; probe < env.RUNNING_OUT_PROBE_TIMES; probe++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (err instanceof UpstreamError && err.status === 429) {
+        last429 = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+  // All probes returned 429 — mark provider as Running out.
+  markQuotaRunningOut(providerId);
+  providerRepo
+    .update(providerId, { quotaRunningOut: true })
+    .catch(() => {});
+  throw last429!;
+}
+
+/**
+ * Streaming variant: peek the first chunk from an async generator, retrying
+ * on 429 up to RUNNING_OUT_PROBE_TIMES times. On success, returns a new
+ * generator that yields the peeked chunk first, then delegates to the rest.
+ */
+async function with429ProbeStream(
+  providerId: string,
+  src: AsyncIterable<NormalizedChunk>,
+): Promise<AsyncIterable<NormalizedChunk>> {
+  let last429: UpstreamError | null = null;
+  for (let probe = 0; probe < env.RUNNING_OUT_PROBE_TIMES; probe++) {
+    try {
+      const iterator = src[Symbol.asyncIterator]();
+      const first = await iterator.next();
+      if (first.done) {
+        // Empty stream — return an empty generator.
+        return (async function* () {}());
+      }
+      // Return a generator that yields the peeked chunk first, then the rest.
+      return (async function* () {
+        yield first.value;
+        let next = await iterator.next();
+        while (!next.done) {
+          yield next.value;
+          next = await iterator.next();
+        }
+      })();
+    } catch (err) {
+      if (err instanceof UpstreamError && err.status === 429) {
+        last429 = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+  markQuotaRunningOut(providerId);
+  providerRepo
+    .update(providerId, { quotaRunningOut: true })
+    .catch(() => {});
+  throw last429!;
 }
 
 function emitMetrics(record: RequestLogRecord): void {
@@ -319,10 +390,8 @@ export async function dispatchChat(
       userAgent: ctx.userAgent,
     });
     try {
-      const resp = await adapter.chat(
-        resolveProvider(c.provider, apiModeOut),
-        req,
-        ctx.signal,
+      const resp = await with429Probe(c.provider.id, () =>
+        adapter.chat(resolveProvider(c.provider, apiModeOut), req, ctx.signal),
       );
       // Translate response back to client's protocol if cross-protocol.
       if (isCrossProtocol) {
@@ -399,9 +468,6 @@ export async function dispatchChat(
         c.pm.id,
         env.STICKY_TTL_MS,
       ).catch(() => {});
-      // A successful request resets the consecutive-429 counter so the
-      // provider is not prematurely marked as "Running out".
-      resetConsecutive429(c.provider.id);
       return { response: resp, provider: c.provider, pm: c.pm, params };
     } catch (err) {
       activeRequests.decr(c.provider.id);
@@ -433,9 +499,6 @@ export async function dispatchChat(
       });
       if (isRetryable(err)) {
         markTransientFailure(c.provider.id);
-        // Track consecutive 429s: if the threshold is reached the provider
-        // is automatically marked as "Running out" and excluded from routing.
-        if (status === 429) incrementConsecutive429(c.provider.id);
         continue;
       }
       // Non-retryable error: forward the original upstream error to the client.
@@ -589,8 +652,11 @@ export async function dispatchChatStream(
         req,
         ctx.signal,
       );
-      // Peek first iteration to detect immediate errors.
-      const wrapped = wrapStream(src, {
+      // Peek first iteration with 429 probe: retry the same provider up to
+      // RUNNING_OUT_PROBE_TIMES times before marking it Running out and
+      // falling back to the next candidate.
+      const peeked = await with429ProbeStream(c.provider.id, src);
+      const wrapped = wrapStream(peeked, {
         started,
         requestId,
         ctx,
@@ -626,7 +692,6 @@ export async function dispatchChatStream(
       });
       if (isRetryable(err)) {
         markTransientFailure(c.provider.id);
-        if (status === 429) incrementConsecutive429(c.provider.id);
         continue;
       }
       // Non-retryable error: forward the original upstream error to the client.
@@ -688,9 +753,14 @@ function wrapStream(
         status = err instanceof UpstreamError ? err.status : 500;
         errorCode =
           err instanceof Error ? err.message.slice(0, 200) : "Unknown";
-        // Track consecutive 429s mid-stream: if the threshold is reached
-        // the provider is marked as "Running out" and excluded from routing.
-        if (status === 429) incrementConsecutive429(ctx.provider.id);
+        // A mid-stream 429 means the provider is rate-limiting — mark it
+        // Running out immediately so subsequent requests avoid it.
+        if (status === 429) {
+          markQuotaRunningOut(ctx.provider.id);
+          providerRepo
+            .update(ctx.provider.id, { quotaRunningOut: true })
+            .catch(() => {});
+        }
         throw err;
       } finally {
         activeRequests.decr(ctx.provider.id);
@@ -779,8 +849,6 @@ function wrapStream(
             ctx.pm.id,
             env.STICKY_TTL_MS,
           ).catch(() => {});
-          // A successful stream resets the consecutive-429 counter.
-          resetConsecutive429(ctx.provider.id);
         }
         // Touch finishReason to avoid "unused" lint complaint.
         void finishReason;
@@ -852,9 +920,8 @@ export async function dispatchDirectChat(
     userAgent: ctx.userAgent,
   });
   try {
-    const resp = await adapter.chat(
-      resolveProvider(c.provider, ctx.apiModeIn),
-      req,
+    const resp = await with429Probe(c.provider.id, () =>
+      adapter.chat(resolveProvider(c.provider, ctx.apiModeIn), req),
     );
     const latency = Date.now() - started;
     emitMetrics({
@@ -903,7 +970,6 @@ export async function dispatchDirectChat(
     } catch {
       /* never block */
     }
-    resetConsecutive429(c.provider.id);
     return { response: resp, provider: c.provider, pm: c.pm, params };
   } catch (err) {
     activeRequests.decr(c.provider.id);
@@ -932,7 +998,6 @@ export async function dispatchDirectChat(
       apiKeyName: ctx.apiKeyName,
       userAgent: ctx.userAgent,
     });
-    if (status === 429) incrementConsecutive429(c.provider.id);
     const upstreamStatus =
       err instanceof UpstreamError ? err.status : undefined;
     const upstreamBody =
@@ -1010,7 +1075,8 @@ export async function dispatchDirectChatStream(
       req,
       ctx.signal,
     );
-    const wrapped = wrapStream(src, {
+    const peeked = await with429ProbeStream(c.provider.id, src);
+    const wrapped = wrapStream(peeked, {
       started,
       requestId,
       ctx,
@@ -1031,9 +1097,6 @@ export async function dispatchDirectChatStream(
         errorCode: err instanceof Error ? err.message.slice(0, 200) : "Unknown",
         latencyMs: Date.now() - started,
       });
-    }
-    if (err instanceof UpstreamError && err.status === 429) {
-      incrementConsecutive429(c.provider.id);
     }
     throw err;
   }
