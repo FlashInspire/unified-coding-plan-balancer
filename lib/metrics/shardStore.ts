@@ -72,7 +72,9 @@ function applySchema(db: Database.Database, kind: ShardKind): void {
         ip TEXT,
         user_agent TEXT,
         api_key_name TEXT,
-        provider_name TEXT
+        provider_name TEXT,
+        completed INTEGER NOT NULL DEFAULT 0,
+        aborted INTEGER NOT NULL DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS idx_request_log_ts ON request_log(ts);
       CREATE INDEX IF NOT EXISTS idx_request_log_key_ts ON request_log(api_key_id, ts);
@@ -148,6 +150,16 @@ function migrateLogShard(db: Database.Database): void {
   }
   if (!cols.includes("provider_name")) {
     db.exec("ALTER TABLE request_log ADD COLUMN provider_name TEXT");
+  }
+  if (!cols.includes("completed")) {
+    db.exec(
+      "ALTER TABLE request_log ADD COLUMN completed INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+  if (!cols.includes("aborted")) {
+    db.exec(
+      "ALTER TABLE request_log ADD COLUMN aborted INTEGER NOT NULL DEFAULT 0",
+    );
   }
 }
 

@@ -69,7 +69,7 @@ vi.mock("@/lib/routing/sticky", () => ({
 }));
 
 vi.mock("@/lib/quota/keyTokenBuffer", () => ({
-  keyTokenBuffer: { increment: vi.fn() },
+  userTokenBuffer: { increment: vi.fn(), isQuotaExceeded: vi.fn(() => false) },
 }));
 
 vi.mock("@/lib/routing/activeRequests", () => ({
@@ -101,6 +101,7 @@ const pm = {
 const ctx = {
   apiKeyId: "key-1",
   apiKeyName: "key",
+  userId: null,
   apiModeIn: "openai" as const,
   ip: null,
   userAgent: null,

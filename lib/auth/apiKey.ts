@@ -18,6 +18,7 @@ export interface CreatedApiKey {
 export interface VerifiedApiKey {
   id: string;
   name: string;
+  ownerId: string | null;
 }
 
 export function generatePlaintext(): string {
@@ -52,7 +53,7 @@ export async function verifyApiKey(
   const hash = sha256Hex(plaintext);
   const row = await prisma.apiKey.findUnique({
     where: { keyHash: hash },
-    select: { id: true, name: true, enabled: true },
+    select: { id: true, name: true, ownerId: true, enabled: true },
   });
   if (!row || !row.enabled) return null;
 
@@ -63,7 +64,7 @@ export async function verifyApiKey(
       /* swallow; metrics path is best-effort */
     });
 
-  return { id: row.id, name: row.name };
+  return { id: row.id, name: row.name, ownerId: row.ownerId };
 }
 
 /** Extract a Bearer token from a Request's Authorization header. */

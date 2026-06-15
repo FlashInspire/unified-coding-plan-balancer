@@ -123,21 +123,13 @@ model ProviderModel {
 // Prefix is always "sk-y6-"; the full key = "sk-y6-" + randomPart.
 // -----------------------------------------------------------------------------
 model ApiKey {
-  id                  String    @id @default(cuid())
-  keyHash             String    @unique // SHA-256 hex of plaintext key
-  name                String
-  ownerId             String? // null = admin-owned (legacy keys)
-  enabled             Boolean   @default(true)
-  createdAt           DateTime  @default(now())
-  lastUsedAt          DateTime?
-  // Token quota (null or 0 = unlimited)
-  rollingQuota        Int?
-  weekQuota           Int?
-  monthQuota          Int?
-  tokensUsed          Int       @default(0) // current period tokens (input+cached+output)
-  rollingQuotaResetAt DateTime?
-  weekQuotaResetAt    DateTime?
-  monthQuotaResetAt   DateTime?
+  id        String    @id @default(cuid())
+  keyHash   String    @unique // SHA-256 hex of plaintext key
+  name      String
+  ownerId   String?   // null = admin-owned (legacy keys)
+  enabled   Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  lastUsedAt DateTime?
 
   owner AdminUser? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
 
@@ -158,6 +150,14 @@ model AdminUser {
   mustChangePassword Boolean   @default(false)
   lastSignInAt       DateTime?
   createdAt          DateTime  @default(now())
+  // Token quota (null or 0 = unlimited) — admin-editable only
+  rollingQuota        Int?
+  weekQuota           Int?
+  monthQuota          Int?
+  tokensUsed          Int       @default(0) // current period tokens (input+cached+output)
+  rollingQuotaResetAt DateTime?
+  weekQuotaResetAt    DateTime?
+  monthQuotaResetAt   DateTime?
 
   preference UserPreference?
   apiKeys    ApiKey[]

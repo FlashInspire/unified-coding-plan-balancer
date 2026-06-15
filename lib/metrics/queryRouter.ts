@@ -29,6 +29,8 @@ export interface RecentLogRow {
   user_agent: string | null;
   real_model_id: string | null;
   ip: string | null;
+  completed: number;
+  aborted: number;
 }
 
 /** Returns the N most recent request_log rows across the last `days` shards. */
@@ -111,7 +113,7 @@ export function recentLogs(
                   latency_ms, ttft_ms, tps_out,
                   input_tokens, cached_input_tokens, output_tokens,
                   stream, error_code, user_agent,
-                  real_model_id, ip
+                  real_model_id, ip, completed, aborted
              FROM request_log ${where}
             ORDER BY ts DESC`,
         )

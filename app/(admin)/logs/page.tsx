@@ -16,6 +16,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Loader2, XCircle } from "lucide-react";
 import { useT } from "../_components/i18n-provider";
 
 const PAGE_SIZES = [25, 50, 100] as const;
@@ -113,7 +114,9 @@ export default function LogsUsagePage() {
       <Tabs value={tab} onValueChange={(v) => setTab(v as "logs" | "usage")}>
         <TabsList variant="line">
           <TabsTrigger value="logs">{t("logs.tabs.requestLogs")}</TabsTrigger>
-          <TabsTrigger value="usage">{t("logs.tabs.aggregatedUsage")}</TabsTrigger>
+          <TabsTrigger value="usage">
+            {t("logs.tabs.aggregatedUsage")}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="logs" className="space-y-3">
@@ -145,15 +148,21 @@ export default function LogsUsagePage() {
                 detailRender={(r) => (
                   <div className="grid grid-cols-3 gap-3 text-xs">
                     <div>
-                      <span className="text-muted-foreground">{t("logs.detail.stream")} </span>
+                      <span className="text-muted-foreground">
+                        {t("logs.detail.stream")}{" "}
+                      </span>
                       {r.stream ? "✓" : "✗"}
                     </div>
                     <div>
-                      <span className="text-muted-foreground">{t("logs.detail.ttft")} </span>
+                      <span className="text-muted-foreground">
+                        {t("logs.detail.ttft")}{" "}
+                      </span>
                       {r.ttft_ms == null ? "—" : `${r.ttft_ms}ms`}
                     </div>
                     <div>
-                      <span className="text-muted-foreground">{t("logs.detail.inTokens")} </span>
+                      <span className="text-muted-foreground">
+                        {t("logs.detail.inTokens")}{" "}
+                      </span>
                       {String(r.input_tokens ?? "")}
                     </div>
                     <div>
@@ -163,7 +172,9 @@ export default function LogsUsagePage() {
                       {String(r.output_tokens ?? "")}
                     </div>
                     <div>
-                      <span className="text-muted-foreground">{t("logs.detail.outTps")} </span>
+                      <span className="text-muted-foreground">
+                        {t("logs.detail.outTps")}{" "}
+                      </span>
                       {r.tps_out == null
                         ? "—"
                         : `${Number(r.tps_out).toFixed(1)}`}
@@ -181,16 +192,22 @@ export default function LogsUsagePage() {
                       {r.real_model_id ? String(r.real_model_id) : "—"}
                     </div>
                     <div>
-                      <span className="text-muted-foreground">{t("logs.detail.cachedIn")} </span>
+                      <span className="text-muted-foreground">
+                        {t("logs.detail.cachedIn")}{" "}
+                      </span>
                       {String(r.cached_input_tokens ?? "")}
                     </div>
                     <div>
-                      <span className="text-muted-foreground">{t("logs.detail.ip")} </span>
+                      <span className="text-muted-foreground">
+                        {t("logs.detail.ip")}{" "}
+                      </span>
                       {r.ip ? String(r.ip) : "—"}
                     </div>
                     {!!r.error_code && (
                       <div className="col-span-3">
-                        <span className="text-muted-foreground">{t("logs.detail.error")} </span>
+                        <span className="text-muted-foreground">
+                          {t("logs.detail.error")}{" "}
+                        </span>
                         <span className="text-destructive">
                           {String(r.error_code)}
                         </span>
@@ -203,10 +220,15 @@ export default function LogsUsagePage() {
                   {
                     key: "ts",
                     label: t("logs.table.time"),
-                    className: "w-[155px]",
+                    className: "w-[180px]",
                     render: (r) => (
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
                         {new Date(Number(r.ts)).toLocaleString()}
+                        {r.aborted ? (
+                          <XCircle className="h-3.5 w-3.5 text-destructive" />
+                        ) : !r.completed ? (
+                          <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                        ) : null}
                       </span>
                     ),
                   },
@@ -238,6 +260,16 @@ export default function LogsUsagePage() {
                     className: "w-[70px]",
                     render: (r) => {
                       const s = Number(r.status);
+                      if (r.aborted)
+                        return (
+                          <Badge
+                            variant="destructive"
+                            className="text-[10px] gap-0.5"
+                          >
+                            <XCircle className="h-3 w-3" />
+                            Aborted
+                          </Badge>
+                        );
                       if (s === 0)
                         return (
                           <Badge variant="secondary" className="text-[10px]">

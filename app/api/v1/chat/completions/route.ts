@@ -48,6 +48,7 @@ export async function POST(req: Request): Promise<Response> {
   const ctx: DispatchContext = {
     apiKeyId: key.id,
     apiKeyName: key.name,
+    userId: key.ownerId,
     apiModeIn: "openai",
     ip:
       req.headers.get("x-forwarded-for") ??

@@ -103,6 +103,34 @@ export const adminUserRepo = {
     await prisma.adminUser.delete({ where: { id } });
   },
 
+  // ── Quota management ──────────────────────────────────────────
+
+  /** Update user-level quota settings (admin only). */
+  async updateQuota(
+    id: string,
+    quota: {
+      rollingQuota?: number | null;
+      weekQuota?: number | null;
+      monthQuota?: number | null;
+    },
+  ) {
+    const data: Record<string, unknown> = {};
+    if (quota.rollingQuota !== undefined) data.rollingQuota = quota.rollingQuota;
+    if (quota.weekQuota !== undefined) data.weekQuota = quota.weekQuota;
+    if (quota.monthQuota !== undefined) data.monthQuota = quota.monthQuota;
+    return prisma.adminUser.update({ where: { id }, data });
+  },
+
+  /** Bulk increment tokensUsed for users (called by cron flusher). */
+  async flushTokenIncrements(increments: Map<string, number>): Promise<void> {
+    for (const [userId, tokens] of increments) {
+      if (tokens <= 0) continue;
+      await prisma.$executeRaw`
+        UPDATE AdminUser SET tokensUsed = tokensUsed + ${tokens} WHERE id = ${userId}
+      `;
+    }
+  },
+
   /**
    * Idempotent: create the default admin (from env) only when no admins exist.
    * Safe to call from process bootstrap.

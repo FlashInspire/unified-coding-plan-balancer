@@ -9,7 +9,7 @@ import { resolveProvider } from "@/lib/adapters/base";
 import { modelRepo } from "@/lib/repositories/modelRepo";
 import { providerModelRepo } from "@/lib/repositories/providerModelRepo";
 import { selectCandidates } from "@/lib/routing/selectCandidate";
-import { keyTokenBuffer } from "@/lib/quota/keyTokenBuffer";
+import { userTokenBuffer } from "@/lib/quota/keyTokenBuffer";
 import { ensureBoot } from "@/lib/boot";
 
 const reqSchema = z.object({
@@ -24,8 +24,8 @@ export async function POST(req: Request): Promise<Response> {
   const key = await verifyApiKey(bearer);
   if (!key) return jsonErr(401, "Invalid API key");
 
-  // Check API key token quota.
-  if (keyTokenBuffer.isQuotaExceeded(key.id, 1)) {
+  // Check user token quota.
+  if (key.ownerId && userTokenBuffer.isQuotaExceeded(key.ownerId, 1)) {
     return jsonErr(429, `API key "${key.name}" token quota exceeded`);
   }
 

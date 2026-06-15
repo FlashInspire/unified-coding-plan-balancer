@@ -27,6 +27,10 @@ export interface RequestLogRecord {
   outputTokens: number;
   ip: string | null;
   userAgent: string | null;
+  /** Whether the request has fully completed (success or error). */
+  completed?: boolean;
+  /** Whether the request was aborted by the client disconnecting. */
+  aborted?: boolean;
 }
 
 class MetricsBuffer {

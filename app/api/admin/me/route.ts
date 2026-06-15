@@ -32,6 +32,11 @@ export async function GET(): Promise<Response> {
       createdAt: user.createdAt.toISOString(),
       language: prefs.language,
       theme: prefs.theme,
+      // User-level quota (read-only for non-admins)
+      rollingQuota: user.rollingQuota,
+      weekQuota: user.weekQuota,
+      monthQuota: user.monthQuota,
+      tokensUsed: user.tokensUsed,
     },
   });
 }

@@ -94,13 +94,6 @@ export interface ApiKeyRow {
   enabled: boolean;
   createdAt: Date;
   lastUsedAt: Date | null;
-  rollingQuota: number | null;
-  weekQuota: number | null;
-  monthQuota: number | null;
-  tokensUsed: number;
-  rollingQuotaResetAt: Date | null;
-  weekQuotaResetAt: Date | null;
-  monthQuotaResetAt: Date | null;
 }
 
 export type UserRole = "admin" | "user";
@@ -114,6 +107,14 @@ export interface AdminUserRow {
   displayName: string | null;
   avatarUrl: string | null;
   createdAt: Date;
+  // User-level token quota (null or 0 = unlimited)
+  rollingQuota: number | null;
+  weekQuota: number | null;
+  monthQuota: number | null;
+  tokensUsed: number;
+  rollingQuotaResetAt: Date | null;
+  weekQuotaResetAt: Date | null;
+  monthQuotaResetAt: Date | null;
 }
 
 /** Resolved view of a provider with its decoded headers (apiKey still raw). */

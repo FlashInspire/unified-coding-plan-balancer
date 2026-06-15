@@ -5,9 +5,6 @@ import { apiKeyRepo } from "@/lib/repositories/apiKeyRepo";
 
 const createSchema = z.object({
   name: z.string().min(1),
-  rollingQuota: z.number().int().nonnegative().nullable().optional(),
-  weekQuota: z.number().int().nonnegative().nullable().optional(),
-  monthQuota: z.number().int().nonnegative().nullable().optional(),
 });
 
 export async function GET(_req: NextRequest): Promise<Response> {
@@ -30,11 +27,6 @@ export async function POST(req: NextRequest): Promise<Response> {
     const isAdmin = session.user.role === "admin";
     const created = await apiKeyRepo.create(
       data.name,
-      {
-        rollingQuota: data.rollingQuota ?? null,
-        weekQuota: data.weekQuota ?? null,
-        monthQuota: data.monthQuota ?? null,
-      },
       // Non-admin keys are auto-bound to their owner.
       isAdmin ? null : session.user.id,
     );

@@ -19,6 +19,10 @@ interface UserRow {
   mustChangePassword: boolean;
   lastSignInAt: string | null;
   createdAt: string;
+  rollingQuota: number | null;
+  weekQuota: number | null;
+  monthQuota: number | null;
+  tokensUsed: number;
 }
 
 export default function UsersPage() {
@@ -165,6 +169,9 @@ export default function UsersPage() {
                 email: editRow.email ?? "",
                 avatarUrl: editRow.avatarUrl ?? "",
                 mustChangePassword: editRow.mustChangePassword,
+                rollingQuota: editRow.rollingQuota ?? "",
+                weekQuota: editRow.weekQuota ?? "",
+                monthQuota: editRow.monthQuota ?? "",
               }
             : undefined
         }
@@ -181,6 +188,12 @@ export default function UsersPage() {
               body.displayName = v.displayName || null;
             if (v.email !== undefined) body.email = v.email || null;
             if (v.avatarUrl !== undefined) body.avatarUrl = v.avatarUrl || null;
+            if (v.rollingQuota !== undefined && v.rollingQuota !== "")
+              body.rollingQuota = Number(v.rollingQuota);
+            if (v.weekQuota !== undefined && v.weekQuota !== "")
+              body.weekQuota = Number(v.weekQuota);
+            if (v.monthQuota !== undefined && v.monthQuota !== "")
+              body.monthQuota = Number(v.monthQuota);
             await apiFetch(`/api/admin/users/${editRow!.id}`, {
               method: "PATCH",
               body: JSON.stringify(body),
@@ -303,6 +316,32 @@ export default function UsersPage() {
                   <Badge variant="outline" className="text-[10px]">
                     {t("users.status.active")}
                   </Badge>
+                );
+              },
+            },
+            {
+              key: "quota",
+              label: t("users.table.quota"),
+              className: "w-[120px]",
+              render: (r) => {
+                const row = r as unknown as UserRow;
+                const fmt = (n: number) =>
+                  n >= 1_000_000
+                    ? `${(n / 1_000_000).toFixed(1)}M`
+                    : n >= 1_000
+                      ? `${(n / 1_000).toFixed(1)}K`
+                      : String(n);
+                const parts: string[] = [];
+                if (row.rollingQuota != null && row.rollingQuota > 0)
+                  parts.push(`R: ${fmt(row.tokensUsed)}/${fmt(row.rollingQuota)}`);
+                if (row.weekQuota != null && row.weekQuota > 0)
+                  parts.push(`W: ${fmt(row.tokensUsed)}/${fmt(row.weekQuota)}`);
+                if (row.monthQuota != null && row.monthQuota > 0)
+                  parts.push(`M: ${fmt(row.tokensUsed)}/${fmt(row.monthQuota)}`);
+                return (
+                  <span className="text-xs text-muted-foreground">
+                    {parts.length > 0 ? parts.join(" ") : "∞"}
+                  </span>
                 );
               },
             },

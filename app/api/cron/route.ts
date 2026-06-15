@@ -18,8 +18,8 @@ import {
 } from "@/lib/metrics/aggregator";
 import { archiveOnce } from "@/lib/metrics/archiver";
 import { resetTick } from "@/lib/quota/reset-scheduler";
-import { keyTokenBuffer } from "@/lib/quota/keyTokenBuffer";
-import { apiKeyRepo } from "@/lib/repositories/apiKeyRepo";
+import { userTokenBuffer } from "@/lib/quota/keyTokenBuffer";
+import { adminUserRepo } from "@/lib/repositories/adminUserRepo";
 
 /** Last time archive was run (epoch ms). 0 = never. */
 let lastArchiveAt = 0;
@@ -53,15 +53,15 @@ export async function GET(): Promise<Response> {
     jobs.aggregate = { error: err instanceof Error ? err.message : "unknown" };
   }
 
-  // 3. Flush API key token buffer to DB
+  // 3. Flush user token buffer to DB
   try {
-    const drained = keyTokenBuffer.drain();
+    const drained = userTokenBuffer.drain();
     if (drained.size > 0) {
-      await apiKeyRepo.flushTokenIncrements(drained);
+      await adminUserRepo.flushTokenIncrements(drained);
     }
-    jobs.keyTokenFlush = { keys: drained.size };
+    jobs.userTokenFlush = { users: drained.size };
   } catch (err) {
-    jobs.keyTokenFlush = {
+    jobs.userTokenFlush = {
       error: err instanceof Error ? err.message : "unknown",
     };
   }

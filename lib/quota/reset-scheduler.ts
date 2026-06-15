@@ -18,7 +18,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { resetQuotaRetries } from "@/lib/routing/selectCandidate";
-import { keyTokenBuffer } from "@/lib/quota/keyTokenBuffer";
+import { userTokenBuffer } from "@/lib/quota/keyTokenBuffer";
 
 // ---------------------------------------------------------------------------
 // Exported helpers (pure, testable)
@@ -168,7 +168,7 @@ export function computeNextNaturalMonthReset(now: Date): Date {
 
 export interface ResetTickResult {
   providersReset: number;
-  keysReset: number;
+  keysReset: number; // now counts user resets
 }
 
 /**
@@ -280,10 +280,10 @@ export async function resetTick(): Promise<ResetTickResult> {
     }),
   );
 
-  // ── ApiKey resets ────────────────────────────────────────────────
+  // ── User (AdminUser) quota resets ──────────────────────────────
 
-  const keys = await prisma.apiKey.findMany({
-    where: { enabled: true },
+  const users = await prisma.adminUser.findMany({
+    where: {},
     select: {
       id: true,
       createdAt: true,
@@ -298,63 +298,63 @@ export async function resetTick(): Promise<ResetTickResult> {
   });
 
   await Promise.all(
-    keys.map((k) => {
+    users.map((u) => {
       const updates: Record<string, unknown> = {};
       let anyReset = false;
 
-      if (k.rollingQuota != null && k.rollingQuota > 0) {
+      if (u.rollingQuota != null && u.rollingQuota > 0) {
         if (
-          k.rollingQuotaResetAt &&
-          k.rollingQuotaResetAt.getTime() <= nowTime
+          u.rollingQuotaResetAt &&
+          u.rollingQuotaResetAt.getTime() <= nowTime
         ) {
           updates.tokensUsed = 0;
           updates.rollingQuotaResetAt = computeNextKeyResetAt(
             "rolling",
             now,
-            k.createdAt,
+            u.createdAt,
           );
           anyReset = true;
-        } else if (!k.rollingQuotaResetAt) {
+        } else if (!u.rollingQuotaResetAt) {
           updates.rollingQuotaResetAt = computeNextKeyResetAt(
             "rolling",
             now,
-            k.createdAt,
+            u.createdAt,
           );
         }
       }
 
-      if (k.weekQuota != null && k.weekQuota > 0) {
-        if (k.weekQuotaResetAt && k.weekQuotaResetAt.getTime() <= nowTime) {
+      if (u.weekQuota != null && u.weekQuota > 0) {
+        if (u.weekQuotaResetAt && u.weekQuotaResetAt.getTime() <= nowTime) {
           updates.tokensUsed = 0;
           updates.weekQuotaResetAt = computeNextKeyResetAt(
             "week",
             now,
-            k.createdAt,
+            u.createdAt,
           );
           anyReset = true;
-        } else if (!k.weekQuotaResetAt) {
+        } else if (!u.weekQuotaResetAt) {
           updates.weekQuotaResetAt = computeNextKeyResetAt(
             "week",
             now,
-            k.createdAt,
+            u.createdAt,
           );
         }
       }
 
-      if (k.monthQuota != null && k.monthQuota > 0) {
-        if (k.monthQuotaResetAt && k.monthQuotaResetAt.getTime() <= nowTime) {
+      if (u.monthQuota != null && u.monthQuota > 0) {
+        if (u.monthQuotaResetAt && u.monthQuotaResetAt.getTime() <= nowTime) {
           updates.tokensUsed = 0;
           updates.monthQuotaResetAt = computeNextKeyResetAt(
             "month",
             now,
-            k.createdAt,
+            u.createdAt,
           );
           anyReset = true;
-        } else if (!k.monthQuotaResetAt) {
+        } else if (!u.monthQuotaResetAt) {
           updates.monthQuotaResetAt = computeNextKeyResetAt(
             "month",
             now,
-            k.createdAt,
+            u.createdAt,
           );
         }
       }
@@ -362,24 +362,24 @@ export async function resetTick(): Promise<ResetTickResult> {
       if (anyReset) {
         keysReset++;
         // Clear quota cache so in-flight checks pick up the reset.
-        keyTokenBuffer.clearQuotaCache(k.id);
+        userTokenBuffer.clearQuotaCache(u.id);
       }
 
       if (Object.keys(updates).length === 0) return Promise.resolve();
-      return prisma.apiKey.update({
-        where: { id: k.id },
+      return prisma.adminUser.update({
+        where: { id: u.id },
         data: updates,
       });
     }),
   );
 
-  // Refresh all key quota caches after potential resets.
-  for (const k of keys) {
-    keyTokenBuffer.setQuotaCache(k.id, {
-      rollingQuota: k.rollingQuota,
-      weekQuota: k.weekQuota,
-      monthQuota: k.monthQuota,
-      tokensUsed: k.tokensUsed,
+  // Refresh all user quota caches after potential resets.
+  for (const u of users) {
+    userTokenBuffer.setQuotaCache(u.id, {
+      rollingQuota: u.rollingQuota,
+      weekQuota: u.weekQuota,
+      monthQuota: u.monthQuota,
+      tokensUsed: u.tokensUsed,
     });
   }
 

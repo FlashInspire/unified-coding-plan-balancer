@@ -6,9 +6,6 @@ import { apiKeyRepo } from "@/lib/repositories/apiKeyRepo";
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
   enabled: z.boolean().optional(),
-  rollingQuota: z.number().int().nonnegative().nullable().optional(),
-  weekQuota: z.number().int().nonnegative().nullable().optional(),
-  monthQuota: z.number().int().nonnegative().nullable().optional(),
 });
 
 /** Verify the key belongs to the user (non-admin) or return true (admin). */

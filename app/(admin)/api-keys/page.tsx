@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { DataTable } from "../_components/data-table";
 import { FormDialog } from "../_components/form-dialog";
-import { CircularProgress } from "../_components/circular-progress";
 import { apiFetch } from "../_components/api";
 import { useT } from "../_components/i18n-provider";
 import { Button } from "@/components/ui/button";
@@ -17,45 +16,6 @@ interface CreatedApiKey {
   id: string;
   name: string;
   plaintext: string;
-}
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-}
-
-/** Compute max quota usage % across rolling/week/month. Returns null if all unlimited. */
-function maxQuotaPercent(k: ApiKeyRow): number | null {
-  const dims: { used: number; quota: number | null | undefined }[] = [
-    { used: k.tokensUsed, quota: k.rollingQuota },
-    { used: k.tokensUsed, quota: k.weekQuota },
-    { used: k.tokensUsed, quota: k.monthQuota },
-  ];
-  let max: number | null = null;
-  for (const d of dims) {
-    if (d.quota != null && d.quota > 0) {
-      const pct = Math.min(100, (d.used / d.quota) * 100);
-      if (max == null || pct > max) max = pct;
-    }
-  }
-  return max;
-}
-
-function quotaTooltip(k: ApiKeyRow): string {
-  const parts: string[] = [];
-  const add = (label: string, q: number | null | undefined) => {
-    if (q == null || q <= 0)
-      parts.push(`${label}: ${formatTokens(k.tokensUsed)}/∞`);
-    else
-      parts.push(
-        `${label}: ${formatTokens(k.tokensUsed)}/${formatTokens(q)} (${Math.min(100, (k.tokensUsed / q) * 100).toFixed(0)}%)`,
-      );
-  };
-  add("Rolling", k.rollingQuota);
-  add("Week", k.weekQuota);
-  add("Month", k.monthQuota);
-  return parts.join("\n");
 }
 
 export default function ApiKeysPage() {
@@ -86,35 +46,13 @@ export default function ApiKeysPage() {
           triggerLabel={t("apiKeys.dialog.createTrigger")}
           fields={[
             { name: "name", label: t("apiKeys.form.name"), type: "text", required: true },
-            {
-              name: "rollingQuota",
-              label: t("apiKeys.form.rollingQuota"),
-              type: "number",
-              required: false,
-            },
-            {
-              name: "weekQuota",
-              label: t("apiKeys.form.weekQuota"),
-              type: "number",
-              required: false,
-            },
-            {
-              name: "monthQuota",
-              label: t("apiKeys.form.monthQuota"),
-              type: "number",
-              required: false,
-            },
           ]}
           onSubmit={async (v) => {
-            const body: Record<string, unknown> = { name: v.name };
-            if (v.rollingQuota) body.rollingQuota = Number(v.rollingQuota);
-            if (v.weekQuota) body.weekQuota = Number(v.weekQuota);
-            if (v.monthQuota) body.monthQuota = Number(v.monthQuota);
             const r = await apiFetch<{ data: CreatedApiKey }>(
               "/api/admin/api-keys",
               {
                 method: "POST",
-                body: JSON.stringify(body),
+                body: JSON.stringify({ name: v.name }),
               },
             );
             setCreated(r.data);
@@ -162,21 +100,6 @@ export default function ApiKeysPage() {
             type: "text" as const,
             required: true,
           },
-          {
-            name: "rollingQuota",
-            label: "Rolling Token Quota (5h)",
-            type: "number" as const,
-          },
-          {
-            name: "weekQuota",
-            label: "Weekly Token Quota (Mon-Sun)",
-            type: "number" as const,
-          },
-          {
-            name: "monthQuota",
-            label: "Monthly Token Quota",
-            type: "number" as const,
-          },
         ]}
         open={editRow != null}
         onOpenChange={(o) => {
@@ -186,9 +109,6 @@ export default function ApiKeysPage() {
           editRow
             ? {
                 name: editRow.name,
-                rollingQuota: editRow.rollingQuota ?? "",
-                weekQuota: editRow.weekQuota ?? "",
-                monthQuota: editRow.monthQuota ?? "",
               }
             : undefined
         }
@@ -231,32 +151,12 @@ export default function ApiKeysPage() {
             {
               key: "name",
               label: t("apiKeys.table.name"),
-              className: "w-[140px]",
+              className: "w-[200px]",
               render: (r) => {
                 const k = r as unknown as ApiKeyRow;
                 return (
                   <span className="text-xs font-medium truncate block">
                     {k.name}
-                  </span>
-                );
-              },
-            },
-            {
-              key: "quota",
-              label: t("apiKeys.table.quota"),
-              className: "w-[80px]",
-              render: (r) => {
-                const k = r as unknown as ApiKeyRow;
-                const pct = maxQuotaPercent(k);
-                return (
-                  <span
-                    title={quotaTooltip(k)}
-                    className="inline-flex items-center gap-1"
-                  >
-                    <CircularProgress value={pct} size={14} showValue={false} />
-                    <span className="text-xs tabular-nums">
-                      {pct != null ? `${Math.round(pct)}%` : "∞"}
-                    </span>
                   </span>
                 );
               },

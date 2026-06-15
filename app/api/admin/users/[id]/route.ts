@@ -10,6 +10,9 @@ const patchSchema = z.object({
   email: z.string().max(256).nullable().optional(),
   displayName: z.string().max(128).nullable().optional(),
   avatarUrl: z.string().max(1024).nullable().optional(),
+  rollingQuota: z.number().int().nonnegative().nullable().optional(),
+  weekQuota: z.number().int().nonnegative().nullable().optional(),
+  monthQuota: z.number().int().nonnegative().nullable().optional(),
 });
 
 export async function PATCH(
@@ -47,6 +50,17 @@ export async function PATCH(
         email: body.email,
         displayName: body.displayName,
         avatarUrl: body.avatarUrl,
+      });
+    }
+    if (
+      body.rollingQuota !== undefined ||
+      body.weekQuota !== undefined ||
+      body.monthQuota !== undefined
+    ) {
+      await adminUserRepo.updateQuota(id, {
+        rollingQuota: body.rollingQuota,
+        weekQuota: body.weekQuota,
+        monthQuota: body.monthQuota,
       });
     }
 

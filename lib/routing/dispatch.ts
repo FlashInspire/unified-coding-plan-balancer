@@ -36,7 +36,7 @@ import { getStickyProvider, setStickyProvider } from "@/lib/routing/sticky";
 import { resolveModelParams } from "@/lib/routing/resolveParams";
 import { activeRequests } from "@/lib/routing/activeRequests";
 import { env, getRuntimeSettingStringSync } from "@/lib/env";
-import { keyTokenBuffer } from "@/lib/quota/keyTokenBuffer";
+import { userTokenBuffer } from "@/lib/quota/keyTokenBuffer";
 import type {
   ApiMode,
   ModelRow,
@@ -87,6 +87,7 @@ export class ApiKeyQuotaExceededError extends Error {
 export interface DispatchContext {
   apiKeyId: string;
   apiKeyName: string;
+  userId: string | null; // owner of the API key (null = admin-owned key)
   apiModeIn: ApiMode;
   ip: string | null;
   userAgent: string | null;
@@ -280,8 +281,8 @@ export async function dispatchChat(
   ctx: DispatchContext,
   extra?: Pick<NormalizedChatRequest, "extraParams" | "rawMessages">,
 ): Promise<DispatchSuccess> {
-  // Check API key token quota before doing any work.
-  if (keyTokenBuffer.isQuotaExceeded(ctx.apiKeyId, 1)) {
+  // Check user token quota before doing any work.
+  if (ctx.userId && userTokenBuffer.isQuotaExceeded(ctx.userId, 1)) {
     throw new ApiKeyQuotaExceededError(ctx.apiKeyName);
   }
 
@@ -432,6 +433,7 @@ export async function dispatchChat(
         ip: ctx.ip,
         apiKeyName: ctx.apiKeyName,
         userAgent: ctx.userAgent,
+        completed: true,
       });
       // Best effort counter accounting; request success should not fail on quota write.
       try {
@@ -454,12 +456,12 @@ export async function dispatchChat(
       } catch {
         /* never block successful response on quota counter write */
       }
-      // Record API key token usage (buffered, flushed by cron).
+      // Record user token usage (buffered, flushed by cron).
       const totalKeyTokens =
         resp.usage.inputTokens +
         resp.usage.cachedInputTokens +
         resp.usage.outputTokens;
-      keyTokenBuffer.increment(ctx.apiKeyId, totalKeyTokens);
+      if (ctx.userId) userTokenBuffer.increment(ctx.userId, totalKeyTokens);
       // Record sticky routing for future requests from this key.
       // Fire-and-forget — never block the response on sticky write.
       setStickyProvider(
@@ -474,6 +476,7 @@ export async function dispatchChat(
       activeRequests.decr(c.provider.id);
       const status = err instanceof UpstreamError ? err.status : 0;
       const message = err instanceof Error ? err.message : "Unknown";
+      const isAborted = !!ctx.signal?.aborted;
       failures.push({ providerId: c.provider.id, status, message });
       emitMetrics({
         requestId: requestId ?? undefined,
@@ -497,6 +500,8 @@ export async function dispatchChat(
         ip: ctx.ip,
         apiKeyName: ctx.apiKeyName,
         userAgent: ctx.userAgent,
+        completed: true,
+        aborted: isAborted,
       });
       if (isRetryable(err)) {
         markTransientFailure(c.provider.id);
@@ -538,8 +543,8 @@ export async function dispatchChatStream(
   ctx: DispatchContext,
   extra?: Pick<NormalizedChatRequest, "extraParams" | "rawMessages">,
 ): Promise<DispatchStreamResult> {
-  // Check API key token quota before doing any work.
-  if (keyTokenBuffer.isQuotaExceeded(ctx.apiKeyId, 1)) {
+  // Check user token quota before doing any work.
+  if (ctx.userId && userTokenBuffer.isQuotaExceeded(ctx.userId, 1)) {
     throw new ApiKeyQuotaExceededError(ctx.apiKeyName);
   }
 
@@ -681,6 +686,7 @@ export async function dispatchChatStream(
       activeRequests.decr(c.provider.id);
       const status = err instanceof UpstreamError ? err.status : 0;
       const message = err instanceof Error ? err.message : "Unknown";
+      const isAborted = !!ctx.signal?.aborted;
       // Close out the in-flight row for this failed attempt so it never stays
       // stuck at status=0 (InFlight). Each candidate attempt owns its own row.
       if (requestId != null) {
@@ -688,6 +694,8 @@ export async function dispatchChatStream(
           status: status || 500,
           errorCode: message.slice(0, 200),
           latencyMs: Date.now() - started,
+          completed: true,
+          aborted: isAborted,
         });
       }
       failures.push({
@@ -734,6 +742,7 @@ function wrapStream(
       let finishReason: string | null = null;
       let status = 200;
       let errorCode: string | null = null;
+      let aborted = false;
       try {
         for await (const chunk of src) {
           if ((chunk.delta || chunk.toolCallsDelta != null) && ttft == null) {
@@ -758,6 +767,8 @@ function wrapStream(
         status = err instanceof UpstreamError ? err.status : 500;
         errorCode =
           err instanceof Error ? err.message.slice(0, 200) : "Unknown";
+        // Detect client abort: the signal was triggered before/during streaming.
+        if (ctx.ctx.signal?.aborted) aborted = true;
         // A mid-stream 429 means the provider is rate-limiting — mark it
         // Running out immediately so subsequent requests avoid it.
         if (status === 429) {
@@ -792,6 +803,8 @@ function wrapStream(
             inputTokens: usage.inputTokens,
             cachedInputTokens: usage.cachedInputTokens,
             outputTokens: outTokens,
+            completed: true,
+            aborted,
           });
         } else {
           // No in-flight row id (the start insert failed) — record via a
@@ -817,6 +830,8 @@ function wrapStream(
             ip: ctx.ctx.ip,
             apiKeyName: ctx.ctx.apiKeyName,
             userAgent: ctx.ctx.userAgent,
+            completed: true,
+            aborted,
           });
         }
         if (status === 200) {
@@ -841,10 +856,10 @@ function wrapStream(
           } catch {
             /* never block stream completion on quota counter write */
           }
-          // Record API key token usage (buffered, flushed by cron).
+          // Record user token usage (buffered, flushed by cron).
           const totalKeyTokens =
             usage.inputTokens + usage.cachedInputTokens + outTokens;
-          keyTokenBuffer.increment(ctx.ctx.apiKeyId, totalKeyTokens);
+          if (ctx.ctx.userId) userTokenBuffer.increment(ctx.ctx.userId, totalKeyTokens);
           // Record sticky routing for future requests from this key.
           // Fire-and-forget — never block the stream on sticky write.
           setStickyProvider(
@@ -954,6 +969,7 @@ export async function dispatchDirectChat(
       ip: ctx.ip,
       apiKeyName: ctx.apiKeyName,
       userAgent: ctx.userAgent,
+      completed: true,
     });
     try {
       if (c.provider.usageMode === "token") {
@@ -980,6 +996,7 @@ export async function dispatchDirectChat(
     activeRequests.decr(c.provider.id);
     const status = err instanceof UpstreamError ? err.status : 0;
     const message = err instanceof Error ? err.message : "Unknown";
+    const isAborted = !!ctx.signal?.aborted;
     emitMetrics({
       requestId: requestId ?? undefined,
       ts: started,
@@ -1002,6 +1019,8 @@ export async function dispatchDirectChat(
       ip: ctx.ip,
       apiKeyName: ctx.apiKeyName,
       userAgent: ctx.userAgent,
+      completed: true,
+      aborted: isAborted,
     });
     const upstreamStatus =
       err instanceof UpstreamError ? err.status : undefined;
@@ -1093,6 +1112,7 @@ export async function dispatchDirectChatStream(
     return { iterator: wrapped, provider: c.provider, pm: c.pm, params };
   } catch (err) {
     activeRequests.decr(c.provider.id);
+    const isAborted = !!ctx.signal?.aborted;
     // Close out the in-flight row so a synchronous failure here is not left
     // stuck at status=0 (InFlight).
     if (requestId != null) {
@@ -1101,6 +1121,8 @@ export async function dispatchDirectChatStream(
         status: status || 500,
         errorCode: err instanceof Error ? err.message.slice(0, 200) : "Unknown",
         latencyMs: Date.now() - started,
+        completed: true,
+        aborted: isAborted,
       });
     }
     throw err;

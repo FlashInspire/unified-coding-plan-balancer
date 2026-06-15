@@ -118,6 +118,10 @@ function UserProfileCard() {
     lastSignInAt: string | null;
     language: string;
     theme: string;
+    rollingQuota: number | null;
+    weekQuota: number | null;
+    monthQuota: number | null;
+    tokensUsed: number;
   } | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [pwOpen, setPwOpen] = useState(false);
@@ -141,6 +145,10 @@ function UserProfileCard() {
             lastSignInAt: string | null;
             language: string;
             theme: string;
+            rollingQuota: number | null;
+            weekQuota: number | null;
+            monthQuota: number | null;
+            tokensUsed: number;
           };
         }>("/api/admin/me");
         setProfile(r.data);
@@ -330,6 +338,41 @@ function UserProfileCard() {
                   ? new Date(profile.lastSignInAt).toLocaleString()
                   : "—"}
               </span>
+            </div>
+            <Separator />
+
+            {/* Quota info (read-only) */}
+            <div className="space-y-1">
+              <span className="text-xs text-muted-foreground">
+                {t("settings.profile.quota")}
+              </span>
+              {(() => {
+                const fmt = (n: number) =>
+                  n >= 1_000_000
+                    ? `${(n / 1_000_000).toFixed(1)}M`
+                    : n >= 1_000
+                      ? `${(n / 1_000).toFixed(1)}K`
+                      : String(n);
+                const dims = [
+                  { label: t("settings.profile.quotaRolling"), q: profile.rollingQuota },
+                  { label: t("settings.profile.quotaWeek"), q: profile.weekQuota },
+                  { label: t("settings.profile.quotaMonth"), q: profile.monthQuota },
+                ].filter((d) => d.q != null && d.q > 0);
+                if (dims.length === 0)
+                  return (
+                    <span className="text-xs text-muted-foreground">
+                      {t("settings.profile.quotaUnlimited")}
+                    </span>
+                  );
+                return dims.map((d) => (
+                  <div key={d.label} className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">{d.label}</span>
+                    <span className="text-xs tabular-nums">
+                      {fmt(profile.tokensUsed)} / {fmt(d.q!)}
+                    </span>
+                  </div>
+                ));
+              })()}
             </div>
             <Separator />
           </div>

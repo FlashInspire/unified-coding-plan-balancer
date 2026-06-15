@@ -16,8 +16,8 @@ export function logRequestStart(record: RequestLogRecord): number {
         api_mode_in, api_mode_out, stream, status, error_code,
         ttft_ms, tps_out, latency_ms,
         input_tokens, cached_input_tokens, output_tokens, ip,
-        user_agent, api_key_name, provider_name)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        user_agent, api_key_name, provider_name, completed, aborted)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
       record.ts,
@@ -40,6 +40,8 @@ export function logRequestStart(record: RequestLogRecord): number {
       record.userAgent,
       record.apiKeyName,
       record.providerName,
+      0, // completed=0 means in-flight
+      0, // aborted=0 means not aborted
     );
   return Number(result.lastInsertRowid);
 }
@@ -60,6 +62,8 @@ export function logRequestUpdate(
     cachedInputTokens?: number;
     outputTokens?: number;
     errorCode?: string | null;
+    completed?: boolean;
+    aborted?: boolean;
   },
 ): void {
   const k = dateKey(new Date(ts));
@@ -73,7 +77,9 @@ export function logRequestUpdate(
        input_tokens = COALESCE(?, input_tokens),
        cached_input_tokens = COALESCE(?, cached_input_tokens),
        output_tokens = COALESCE(?, output_tokens),
-       error_code = COALESCE(?, error_code)
+       error_code = COALESCE(?, error_code),
+       completed = MAX(COALESCE(?, completed), completed),
+       aborted = MAX(COALESCE(?, aborted), aborted)
      WHERE id = ?`,
   ).run(
     fields.status ?? null,
@@ -84,6 +90,8 @@ export function logRequestUpdate(
     fields.cachedInputTokens ?? null,
     fields.outputTokens ?? null,
     fields.errorCode ?? null,
+    fields.completed != null ? (fields.completed ? 1 : 0) : null,
+    fields.aborted != null ? (fields.aborted ? 1 : 0) : null,
     requestId,
   );
 }
@@ -118,8 +126,8 @@ export function flushOnce(): number {
           api_mode_in, api_mode_out, stream, status, error_code,
           ttft_ms, tps_out, latency_ms,
           input_tokens, cached_input_tokens, output_tokens, ip,
-          user_agent, api_key_name, provider_name)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          user_agent, api_key_name, provider_name, completed, aborted)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       );
       const tx = db.transaction((rows: RequestLogRecord[]) => {
         for (const r of rows) {
@@ -144,6 +152,8 @@ export function flushOnce(): number {
             r.userAgent,
             r.apiKeyName,
             r.providerName,
+            r.completed ? 1 : 0,
+            r.aborted ? 1 : 0,
           );
         }
       });
@@ -160,7 +170,9 @@ export function flushOnce(): number {
            latency_ms = ?,
            input_tokens = ?,
            cached_input_tokens = ?,
-           output_tokens = ?
+           output_tokens = ?,
+           completed = MAX(COALESCE(?, completed), completed),
+           aborted = MAX(COALESCE(?, aborted), aborted)
          WHERE id = ?`,
       );
       const tx = db.transaction((rows: RequestLogRecord[]) => {
@@ -174,6 +186,8 @@ export function flushOnce(): number {
             r.inputTokens,
             r.cachedInputTokens,
             r.outputTokens,
+            r.completed != null ? (r.completed ? 1 : 0) : null,
+            r.aborted != null ? (r.aborted ? 1 : 0) : null,
             r.requestId,
           );
         }
