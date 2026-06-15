@@ -1,7 +1,17 @@
 import { prisma } from "@/lib/prisma";
 
+/** Allowed load-balance mode values. */
+export const LOAD_BALANCE_MODES = [
+  "weighted",
+  "round-robin",
+  "strict-weight",
+] as const;
+
+export type LoadBalanceMode = (typeof LOAD_BALANCE_MODES)[number];
+
 /** Keys that can be overridden at runtime via the SystemSetting table. */
 export const RUNTIME_SETTING_KEYS = [
+  "LOAD_BALANCE_MODE",
   "LOG_RETENTION_DAYS",
   "STAT_RETENTION_MONTHS",
   "QUOTA_REFRESH_INTERVAL_MS",

@@ -38,6 +38,7 @@ export function recentLogs(
     limit?: number;
     offset?: number;
     apiKeyId?: string;
+    apiKeyIds?: string[]; // filter to these key IDs (OR)
     modelId?: string;
     providerId?: string;
     status?: "ok" | "error" | "inflight";
@@ -60,6 +61,10 @@ export function recentLogs(
   if (opts.apiKeyId) {
     conditions.push("api_key_id = ?");
     params.push(opts.apiKeyId);
+  } else if (opts.apiKeyIds && opts.apiKeyIds.length > 0) {
+    const placeholders = opts.apiKeyIds.map(() => "?").join(", ");
+    conditions.push(`api_key_id IN (${placeholders})`);
+    params.push(...opts.apiKeyIds);
   }
   if (opts.modelId) {
     conditions.push("model_id = ?");
@@ -141,9 +146,17 @@ export interface UsageBucket {
 /** Aggregated usage in a single month shard. */
 export function usageInMonth(
   monthShardKey: string = monthKey(),
+  apiKeyIds?: string[],
 ): UsageBucket[] {
   try {
     const db = shardStore.openStat(monthShardKey);
+    let where = "";
+    const params: unknown[] = [];
+    if (apiKeyIds && apiKeyIds.length > 0) {
+      const placeholders = apiKeyIds.map(() => "?").join(", ");
+      where = `WHERE api_key_id IN (${placeholders})`;
+      params.push(...apiKeyIds);
+    }
     return db
       .prepare(
         `SELECT minute, api_key_id, provider_id, model_id,
@@ -151,11 +164,11 @@ export function usageInMonth(
                 input_tokens, cached_input_tokens, output_tokens,
                 CASE WHEN ttft_ms_count > 0 THEN ttft_ms_sum * 1.0 / ttft_ms_count END AS avg_ttft_ms,
                 CASE WHEN tps_out_count > 0 THEN tps_out_sum * 1.0 / tps_out_count END AS avg_tps_out
-           FROM usage_minute
-           ORDER BY minute DESC
-           LIMIT 5000`,
+           FROM usage_minute ${where}
+          ORDER BY minute DESC
+          LIMIT 5000`,
       )
-      .all() as UsageBucket[];
+      .all(...params) as UsageBucket[];
   } catch {
     return [];
   }

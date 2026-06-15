@@ -20,6 +20,13 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { signOut } from "next-auth/react";
 import { LogOut, Lock, Sun, Moon, Monitor, Globe } from "lucide-react";
 
@@ -29,6 +36,7 @@ interface SettingEntry {
 }
 
 const SETTING_LABELS: Record<string, string> = {
+  LOAD_BALANCE_MODE: "Load Balance Mode",
   LOG_RETENTION_DAYS: "Log Retention (days)",
   STAT_RETENTION_MONTHS: "Stat Retention (months)",
   QUOTA_REFRESH_INTERVAL_MS: "Quota Refresh Interval (ms)",
@@ -39,6 +47,37 @@ const SETTING_LABELS: Record<string, string> = {
   STICKY_TTL_MS: "Sticky Routing TTL (ms)",
 };
 
+/** Settings that render as a Select dropdown (not a number input). */
+const SETTING_SELECT_OPTIONS: Record<
+  string,
+  { value: string; labelKey: string }[]
+> = {
+  LOAD_BALANCE_MODE: [
+    { value: "weighted", labelKey: "settings.system.loadBalanceMode.weighted" },
+    {
+      value: "round-robin",
+      labelKey: "settings.system.loadBalanceMode.roundRobin",
+    },
+    {
+      value: "strict-weight",
+      labelKey: "settings.system.loadBalanceMode.strictWeight",
+    },
+  ],
+};
+
+/** Explicit render order — keys not listed here appear at the end in label-map order. */
+const SETTING_RENDER_ORDER = [
+  "LOAD_BALANCE_MODE",
+  "LOG_RETENTION_DAYS",
+  "STAT_RETENTION_MONTHS",
+  "QUOTA_REFRESH_INTERVAL_MS",
+  "QUOTA_REFRESH_CONCURRENCY",
+  "QUOTA_EXHAUST_THRESHOLD",
+  "METRICS_FLUSH_INTERVAL_MS",
+  "METRICS_FLUSH_BATCH_SIZE",
+  "STICKY_TTL_MS",
+];
+
 export default function SettingsPage() {
   const t = useT();
   return (
@@ -46,7 +85,9 @@ export default function SettingsPage() {
       <h1 className="text-sm font-semibold">{t("page.settings.title")}</h1>
       <Tabs defaultValue="profile">
         <TabsList variant="line">
-          <TabsTrigger value="profile">{t("settings.tabs.profile")}</TabsTrigger>
+          <TabsTrigger value="profile">
+            {t("settings.tabs.profile")}
+          </TabsTrigger>
           <TabsTrigger value="system">{t("settings.tabs.system")}</TabsTrigger>
         </TabsList>
         <TabsContent value="profile">
@@ -70,6 +111,10 @@ function UserProfileCard() {
   const { update: updateSession } = useSession();
   const [profile, setProfile] = useState<{
     username: string;
+    role: string;
+    email: string | null;
+    displayName: string | null;
+    avatarUrl: string | null;
     lastSignInAt: string | null;
     language: string;
     theme: string;
@@ -89,6 +134,10 @@ function UserProfileCard() {
         const r = await apiFetch<{
           data: {
             username: string;
+            role: string;
+            email: string | null;
+            displayName: string | null;
+            avatarUrl: string | null;
             lastSignInAt: string | null;
             language: string;
             theme: string;
@@ -170,13 +219,108 @@ function UserProfileCard() {
           <Skeleton className="h-20 w-full" />
         ) : profile ? (
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">
-                {t("settings.profile.username")}
-              </span>
-              <span className="text-xs font-medium">{profile.username}</span>
+            {/* Avatar + username header */}
+            <div className="flex items-center gap-3">
+              {profile.avatarUrl ? (
+                <img
+                  src={profile.avatarUrl}
+                  alt=""
+                  className="h-10 w-10 rounded-full object-cover"
+                />
+              ) : (
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground">
+                  {(profile.displayName ||
+                    profile.username ||
+                    "?")[0].toUpperCase()}
+                </span>
+              )}
+              <div className="min-w-0">
+                <div className="text-sm font-medium truncate">
+                  {profile.displayName || profile.username}
+                </div>
+                <div className="text-xs text-muted-foreground truncate">
+                  @{profile.username}
+                </div>
+              </div>
+              {profile.role === "admin" && (
+                <Badge
+                  variant="secondary"
+                  className="text-[10px] bg-blue-100 text-blue-800 ml-auto"
+                >
+                  {t("users.role.admin")}
+                </Badge>
+              )}
             </div>
             <Separator />
+
+            {/* Editable profile fields */}
+            <div className="space-y-2">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">
+                  {t("settings.profile.displayName")}
+                </label>
+                <Input
+                  value={profile.displayName ?? ""}
+                  onChange={(e) =>
+                    setProfile((p) =>
+                      p ? { ...p, displayName: e.target.value || null } : p,
+                    )
+                  }
+                  placeholder={profile.username}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">
+                  {t("settings.profile.email")}
+                </label>
+                <Input
+                  value={profile.email ?? ""}
+                  onChange={(e) =>
+                    setProfile((p) =>
+                      p ? { ...p, email: e.target.value || null } : p,
+                    )
+                  }
+                  placeholder="user@example.com"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">
+                  {t("settings.profile.avatarUrl")}
+                </label>
+                <Input
+                  value={profile.avatarUrl ?? ""}
+                  onChange={(e) =>
+                    setProfile((p) =>
+                      p ? { ...p, avatarUrl: e.target.value || null } : p,
+                    )
+                  }
+                  placeholder="https://..."
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={async () => {
+                  try {
+                    await apiFetch("/api/admin/me", {
+                      method: "PATCH",
+                      body: JSON.stringify({
+                        displayName: profile.displayName,
+                        email: profile.email,
+                        avatarUrl: profile.avatarUrl,
+                      }),
+                    });
+                  } catch {
+                    // non-critical
+                  }
+                }}
+              >
+                {t("dialog.save")}
+              </Button>
+            </div>
+            <Separator />
+
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">
                 {t("settings.profile.lastLogin")}
@@ -335,6 +479,7 @@ function UserProfileCard() {
 // Tab 2: System Settings
 // ---------------------------------------------------------------------------
 function SystemSettingsCard() {
+  const t = useT();
   const [settings, setSettings] = useState<Record<string, SettingEntry> | null>(
     null,
   );
@@ -413,9 +558,11 @@ function SystemSettingsCard() {
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
-        {Object.entries(SETTING_LABELS).map(([key, label]) => {
+        {SETTING_RENDER_ORDER.filter((k) => k in SETTING_LABELS).map((key) => {
+          const label = SETTING_LABELS[key];
           const entry = settings[key];
           const edited = edits[key];
+          const selectOptions = SETTING_SELECT_OPTIONS[key];
           return (
             <div
               key={key}
@@ -425,14 +572,34 @@ function SystemSettingsCard() {
                 className="text-xs font-medium text-muted-foreground truncate"
                 title={key}
               >
-                {label}
+                {key === "LOAD_BALANCE_MODE"
+                  ? t("settings.system.loadBalanceMode")
+                  : label}
               </label>
-              <Input
-                type="number"
-                value={edited ?? entry?.value ?? ""}
-                onChange={(e) => handleChange(key, e.target.value)}
-                className="h-8 text-xs"
-              />
+              {selectOptions ? (
+                <Select
+                  value={edited ?? entry?.value ?? ""}
+                  onValueChange={(v) => handleChange(key, v)}
+                >
+                  <SelectTrigger className="h-8 text-xs w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {t(opt.labelKey)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  type="number"
+                  value={edited ?? entry?.value ?? ""}
+                  onChange={(e) => handleChange(key, e.target.value)}
+                  className="h-8 text-xs"
+                />
+              )}
               <Badge
                 variant={entry?.source === "db" ? "default" : "outline"}
                 className="text-[10px] justify-center"

@@ -6,6 +6,10 @@ import { adminUserRepo } from "@/lib/repositories/adminUserRepo";
 const createSchema = z.object({
   username: z.string().min(1).max(64),
   password: z.string().min(6),
+  role: z.enum(["admin", "user"]).optional().default("user"),
+  email: z.string().max(256).optional(),
+  displayName: z.string().max(128).optional(),
+  avatarUrl: z.string().max(1024).optional(),
 });
 
 export async function GET(): Promise<Response> {
@@ -31,11 +35,20 @@ export async function POST(req: NextRequest): Promise<Response> {
       );
     }
 
-    const user = await adminUserRepo.create(body.username, body.password);
+    const user = await adminUserRepo.create(body.username, body.password, {
+      role: body.role,
+      email: body.email || null,
+      displayName: body.displayName || null,
+      avatarUrl: body.avatarUrl || null,
+    });
     return Response.json({
       data: {
         id: user.id,
         username: user.username,
+        role: user.role,
+        email: user.email,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
         mustChangePassword: user.mustChangePassword,
         createdAt: user.createdAt,
       },

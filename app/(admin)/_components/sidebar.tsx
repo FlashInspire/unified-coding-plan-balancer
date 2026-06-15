@@ -18,19 +18,58 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useState } from "react";
 import { useT } from "./i18n-provider";
+import { useSession } from "next-auth/react";
 
+/** All nav items with their required role. */
 const NAV_ITEMS = [
-  { href: "/", labelKey: "nav.overview", icon: LayoutDashboard },
-  { href: "/providers", labelKey: "nav.providers", icon: Server },
-  { href: "/models", labelKey: "nav.models", icon: Layers },
-  { href: "/api-keys", labelKey: "nav.apiKeys", icon: Key },
-  { href: "/logs", labelKey: "nav.logs", icon: ScrollText },
-  { href: "/users", labelKey: "nav.users", icon: Users },
+  {
+    href: "/",
+    labelKey: "nav.overview",
+    icon: LayoutDashboard,
+    roles: ["admin", "user"],
+  },
+  {
+    href: "/providers",
+    labelKey: "nav.providers",
+    icon: Server,
+    roles: ["admin"],
+  },
+  { href: "/models", labelKey: "nav.models", icon: Layers, roles: ["admin"] },
+  {
+    href: "/api-keys",
+    labelKey: "nav.apiKeys",
+    icon: Key,
+    roles: ["admin", "user"],
+  },
+  {
+    href: "/logs",
+    labelKey: "nav.logs",
+    icon: ScrollText,
+    roles: ["admin", "user"],
+  },
+  { href: "/users", labelKey: "nav.users", icon: Users, roles: ["admin"] },
 ] as const;
 
 function NavContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const t = useT();
+  const { data: session } = useSession();
+  const user = session?.user as
+    | {
+        role?: string;
+        displayName?: string | null;
+        avatarUrl?: string | null;
+        name?: string | null;
+      }
+    | undefined;
+  const role = user?.role ?? "user";
+
+  const visibleItems = NAV_ITEMS.filter((item) =>
+    (item.roles as readonly string[]).includes(role),
+  );
+
+  const displayName = user?.displayName || user?.name || "?";
+  const initial = displayName[0].toUpperCase();
 
   return (
     <div className="flex h-full flex-col">
@@ -45,7 +84,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
       </div>
       <ScrollArea className="flex-1 py-2">
         <nav className="flex flex-col gap-0.5 px-3">
-          {NAV_ITEMS.map((item) => {
+          {visibleItems.map((item) => {
             const isActive =
               pathname === item.href ||
               (item.href !== "/" && pathname.startsWith(item.href));
@@ -69,6 +108,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
         </nav>
       </ScrollArea>
       <div className="border-t border-sidebar-border p-3">
+        {/* User info */}
         <Link
           href="/settings"
           onClick={onNavigate}
@@ -79,8 +119,24 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
               : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
           )}
         >
-          <Settings className="h-4 w-4 shrink-0" />
-          {t("nav.settings")}
+          {user?.avatarUrl ? (
+            <img
+              src={user.avatarUrl}
+              alt=""
+              className="h-7 w-7 rounded-full object-cover"
+            />
+          ) : (
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-medium text-primary-foreground">
+              {initial}
+            </span>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm">{displayName}</div>
+            <div className="truncate text-[10px] text-muted-foreground">
+              {t("nav.settings")}
+            </div>
+          </div>
+          <Settings className="h-4 w-4 shrink-0 text-muted-foreground" />
         </Link>
       </div>
     </div>

@@ -15,12 +15,22 @@ export interface ApiKeyPatch {
 }
 
 export const apiKeyRepo = {
-  async list(): Promise<ApiKeyRow[]> {
-    return prisma.apiKey.findMany({ orderBy: { createdAt: "desc" } });
+  async list(ownerId?: string | null): Promise<ApiKeyRow[]> {
+    const where = ownerId !== undefined ? { ownerId } : undefined;
+    return prisma.apiKey.findMany({ where, orderBy: { createdAt: "desc" } });
   },
 
   async findById(id: string): Promise<ApiKeyRow | null> {
     return prisma.apiKey.findUnique({ where: { id } });
+  },
+
+  /** Return just the IDs of keys owned by a given user (for metrics filtering). */
+  async findIdsByOwner(ownerId: string): Promise<string[]> {
+    const rows = await prisma.apiKey.findMany({
+      where: { ownerId },
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
   },
 
   async create(
@@ -30,6 +40,7 @@ export const apiKeyRepo = {
       weekQuota?: number | null;
       monthQuota?: number | null;
     },
+    ownerId?: string | null,
   ): Promise<CreatedApiKey> {
     const plaintext = generatePlaintext();
     const keyHash = sha256Hex(plaintext);
@@ -37,6 +48,7 @@ export const apiKeyRepo = {
       data: {
         name,
         keyHash,
+        ownerId: ownerId ?? null,
         enabled: true,
         rollingQuota: quota?.rollingQuota ?? null,
         weekQuota: quota?.weekQuota ?? null,
@@ -82,9 +94,7 @@ export const apiKeyRepo = {
   },
 
   /** Bulk increment: receives a map of keyId → tokens to add. */
-  async flushTokenIncrements(
-    increments: Map<string, number>,
-  ): Promise<void> {
+  async flushTokenIncrements(increments: Map<string, number>): Promise<void> {
     for (const [keyId, tokens] of increments) {
       if (tokens <= 0) continue;
       await prisma.$executeRaw`

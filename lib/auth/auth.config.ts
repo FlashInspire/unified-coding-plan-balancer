@@ -59,12 +59,22 @@ export const authConfig: NextAuthConfig = {
         // Carry preferences from the user object (set by Credentials provider).
         token.language = (user as { language?: string }).language ?? "en";
         token.theme = (user as { theme?: string }).theme ?? "system";
+        // Profile fields.
+        token.role = (user as { role?: string }).role ?? "user";
+        token.email = (user as { email?: string | null }).email ?? null;
+        token.displayName =
+          (user as { displayName?: string | null }).displayName ?? null;
+        token.avatarUrl =
+          (user as { avatarUrl?: string | null }).avatarUrl ?? null;
       }
       if (trigger === "update" && session) {
         const s = session as {
           mustChangePassword?: boolean;
           language?: string;
           theme?: string;
+          email?: string | null;
+          displayName?: string | null;
+          avatarUrl?: string | null;
         };
         if (typeof s.mustChangePassword === "boolean") {
           token.mustChangePassword = s.mustChangePassword;
@@ -75,15 +85,24 @@ export const authConfig: NextAuthConfig = {
         if (typeof s.theme === "string") {
           token.theme = s.theme;
         }
+        if (s.email !== undefined) token.email = s.email;
+        if (s.displayName !== undefined) token.displayName = s.displayName;
+        if (s.avatarUrl !== undefined) token.avatarUrl = s.avatarUrl;
       }
       return token;
     },
     session: ({ session, token }) => {
       if (session.user && token.id) {
-        session.user.id = token.id as string;
-        session.user.mustChangePassword = token.mustChangePassword as boolean;
-        session.user.language = (token.language as string) ?? "en";
-        session.user.theme = (token.theme as string) ?? "system";
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const u = session.user as any;
+        u.id = token.id as string;
+        u.mustChangePassword = token.mustChangePassword as boolean;
+        u.language = (token.language as string) ?? "en";
+        u.theme = (token.theme as string) ?? "system";
+        u.role = (token.role as string) ?? "user";
+        u.email = (token.email as string | null) ?? null;
+        u.displayName = (token.displayName as string | null) ?? null;
+        u.avatarUrl = (token.avatarUrl as string | null) ?? null;
       }
       return session;
     },

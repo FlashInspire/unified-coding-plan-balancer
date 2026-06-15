@@ -4,6 +4,7 @@ import { requireAdmin } from "../_lib/guard";
 import {
   systemSettingRepo,
   RUNTIME_SETTING_KEYS,
+  LOAD_BALANCE_MODES,
 } from "@/lib/repositories/systemSettingRepo";
 import { env, refreshRuntimeConfig } from "@/lib/env";
 
@@ -15,7 +16,8 @@ export async function GET(): Promise<Response> {
   if (denied) return denied;
 
   const overrides = await systemSettingRepo.getAll();
-  const defaults: Record<string, number> = {
+  const defaults: Record<string, string | number> = {
+    LOAD_BALANCE_MODE: env.LOAD_BALANCE_MODE,
     LOG_RETENTION_DAYS: env.LOG_RETENTION_DAYS,
     STAT_RETENTION_MONTHS: env.STAT_RETENTION_MONTHS,
     QUOTA_REFRESH_INTERVAL_MS: env.QUOTA_REFRESH_INTERVAL_MS,
@@ -60,6 +62,20 @@ export async function PATCH(req: NextRequest): Promise<Response> {
           { status: 400 },
         );
       }
+    }
+
+    // Validate enum values for known string settings
+    const lbm = body["LOAD_BALANCE_MODE"];
+    if (
+      lbm !== undefined &&
+      !LOAD_BALANCE_MODES.includes(lbm as (typeof LOAD_BALANCE_MODES)[number])
+    ) {
+      return Response.json(
+        {
+          error: `Invalid LOAD_BALANCE_MODE: ${lbm}. Must be one of: ${LOAD_BALANCE_MODES.join(", ")}`,
+        },
+        { status: 400 },
+      );
     }
 
     await systemSettingRepo.setMany(body);

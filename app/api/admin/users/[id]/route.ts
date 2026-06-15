@@ -6,6 +6,10 @@ import { adminUserRepo } from "@/lib/repositories/adminUserRepo";
 const patchSchema = z.object({
   mustChangePassword: z.boolean().optional(),
   password: z.string().min(6).optional(),
+  role: z.enum(["admin", "user"]).optional(),
+  email: z.string().max(256).nullable().optional(),
+  displayName: z.string().max(128).nullable().optional(),
+  avatarUrl: z.string().max(1024).nullable().optional(),
 });
 
 export async function PATCH(
@@ -30,6 +34,20 @@ export async function PATCH(
     }
     if (body.mustChangePassword != null) {
       await adminUserRepo.setMustChangePassword(id, body.mustChangePassword);
+    }
+    if (body.role != null) {
+      await adminUserRepo.updateRole(id, body.role);
+    }
+    if (
+      body.email !== undefined ||
+      body.displayName !== undefined ||
+      body.avatarUrl !== undefined
+    ) {
+      await adminUserRepo.updateProfile(id, {
+        email: body.email,
+        displayName: body.displayName,
+        avatarUrl: body.avatarUrl,
+      });
     }
 
     return Response.json({ ok: true });

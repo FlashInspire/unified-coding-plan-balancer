@@ -12,6 +12,10 @@ import { Pencil } from "lucide-react";
 interface UserRow {
   id: string;
   username: string;
+  role: string;
+  email: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
   mustChangePassword: boolean;
   lastSignInAt: string | null;
   createdAt: string;
@@ -60,6 +64,30 @@ export default function UsersPage() {
               type: "text" as const,
               required: true,
             },
+            {
+              name: "role",
+              label: t("users.form.role"),
+              type: "select" as const,
+              options: [
+                { value: "user", label: t("users.role.user") },
+                { value: "admin", label: t("users.role.admin") },
+              ],
+            },
+            {
+              name: "displayName",
+              label: t("users.form.displayName"),
+              type: "text" as const,
+            },
+            {
+              name: "email",
+              label: t("users.form.email"),
+              type: "text" as const,
+            },
+            {
+              name: "avatarUrl",
+              label: t("users.form.avatarUrl"),
+              type: "text" as const,
+            },
           ]}
           onSubmit={async (v) => {
             setError(null);
@@ -89,6 +117,30 @@ export default function UsersPage() {
             readOnly: true,
           },
           {
+            name: "role",
+            label: t("users.form.role"),
+            type: "select" as const,
+            options: [
+              { value: "user", label: t("users.role.user") },
+              { value: "admin", label: t("users.role.admin") },
+            ],
+          },
+          {
+            name: "displayName",
+            label: t("users.form.displayName"),
+            type: "text" as const,
+          },
+          {
+            name: "email",
+            label: t("users.form.email"),
+            type: "text" as const,
+          },
+          {
+            name: "avatarUrl",
+            label: t("users.form.avatarUrl"),
+            type: "text" as const,
+          },
+          {
             name: "password",
             label: "New Password (leave blank to keep current)",
             type: "text" as const,
@@ -108,6 +160,10 @@ export default function UsersPage() {
           editRow
             ? {
                 username: editRow.username,
+                role: editRow.role,
+                displayName: editRow.displayName ?? "",
+                email: editRow.email ?? "",
+                avatarUrl: editRow.avatarUrl ?? "",
                 mustChangePassword: editRow.mustChangePassword,
               }
             : undefined
@@ -120,6 +176,11 @@ export default function UsersPage() {
             if (v.password) body.password = v.password;
             if (v.mustChangePassword != null)
               body.mustChangePassword = v.mustChangePassword;
+            if (v.role && v.role !== editRow!.role) body.role = v.role;
+            if (v.displayName !== undefined)
+              body.displayName = v.displayName || null;
+            if (v.email !== undefined) body.email = v.email || null;
+            if (v.avatarUrl !== undefined) body.avatarUrl = v.avatarUrl || null;
             await apiFetch(`/api/admin/users/${editRow!.id}`, {
               method: "PATCH",
               body: JSON.stringify(body),
@@ -152,11 +213,83 @@ export default function UsersPage() {
           tableClassName="table-fixed"
           data={data as unknown as Record<string, unknown>[]}
           columns={[
-            { key: "username", label: t("users.table.username"), className: "w-[160px]" },
+            {
+              key: "username",
+              label: t("users.table.username"),
+              className: "w-[180px]",
+              render: (r) => {
+                const row = r as unknown as UserRow;
+                const initial = (row.displayName ||
+                  row.username ||
+                  "?")[0].toUpperCase();
+                return (
+                  <div className="flex items-center gap-2">
+                    {row.avatarUrl ? (
+                      <img
+                        src={row.avatarUrl}
+                        alt=""
+                        className="h-6 w-6 rounded-full object-cover"
+                      />
+                    ) : (
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
+                        {initial}
+                      </span>
+                    )}
+                    <span className="truncate">{row.username}</span>
+                  </div>
+                );
+              },
+            },
+            {
+              key: "role",
+              label: t("users.table.role"),
+              className: "w-[90px]",
+              render: (r) => {
+                const row = r as unknown as UserRow;
+                return row.role === "admin" ? (
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] bg-blue-100 text-blue-800"
+                  >
+                    {t("users.role.admin")}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px]">
+                    {t("users.role.user")}
+                  </Badge>
+                );
+              },
+            },
+            {
+              key: "displayName",
+              label: t("users.table.displayName"),
+              className: "w-[120px]",
+              render: (r) => {
+                const row = r as unknown as UserRow;
+                return (
+                  <span className="text-xs text-muted-foreground truncate block">
+                    {row.displayName || "—"}
+                  </span>
+                );
+              },
+            },
+            {
+              key: "email",
+              label: t("users.table.email"),
+              className: "w-[160px]",
+              render: (r) => {
+                const row = r as unknown as UserRow;
+                return (
+                  <span className="text-xs text-muted-foreground truncate block">
+                    {row.email || "—"}
+                  </span>
+                );
+              },
+            },
             {
               key: "mustChangePassword",
               label: t("users.table.status"),
-              className: "w-[150px]",
+              className: "w-[110px]",
               render: (r) => {
                 const row = r as unknown as UserRow;
                 return row.mustChangePassword ? (
@@ -164,11 +297,11 @@ export default function UsersPage() {
                     variant="secondary"
                     className="text-[10px] bg-amber-100 text-amber-800"
                   >
-                    Yes
+                    {t("users.status.mustChange")}
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="text-[10px]">
-                    No
+                    {t("users.status.active")}
                   </Badge>
                 );
               },
@@ -176,7 +309,7 @@ export default function UsersPage() {
             {
               key: "lastSignInAt",
               label: t("users.table.lastLogin"),
-              className: "w-[150px]",
+              className: "w-[130px]",
               render: (r) => {
                 const row = r as unknown as UserRow;
                 return (
@@ -187,13 +320,6 @@ export default function UsersPage() {
                   </span>
                 );
               },
-            },
-            {
-              key: "createdAt",
-              label: t("users.table.created"),
-              className: "w-[120px]",
-              render: (r) =>
-                new Date(r.createdAt as string).toLocaleDateString(),
             },
           ]}
           actions={(row) => {

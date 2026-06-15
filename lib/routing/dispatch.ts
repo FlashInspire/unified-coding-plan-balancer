@@ -30,11 +30,12 @@ import {
   markQuotaRunningOut,
   markTransientFailure,
   selectCandidates,
+  type LoadBalanceMode,
 } from "@/lib/routing/selectCandidate";
 import { getStickyProvider, setStickyProvider } from "@/lib/routing/sticky";
 import { resolveModelParams } from "@/lib/routing/resolveParams";
 import { activeRequests } from "@/lib/routing/activeRequests";
-import { env } from "@/lib/env";
+import { env, getRuntimeSettingStringSync } from "@/lib/env";
 import { keyTokenBuffer } from "@/lib/quota/keyTokenBuffer";
 import type {
   ApiMode,
@@ -139,9 +140,7 @@ async function with429Probe<T>(
   }
   // All probes returned 429 — mark provider as Running out.
   markQuotaRunningOut(providerId);
-  providerRepo
-    .update(providerId, { quotaRunningOut: true })
-    .catch(() => {});
+  providerRepo.update(providerId, { quotaRunningOut: true }).catch(() => {});
   throw last429!;
 }
 
@@ -161,7 +160,7 @@ async function with429ProbeStream(
       const first = await iterator.next();
       if (first.done) {
         // Empty stream — return an empty generator.
-        return (async function* () {}());
+        return (async function* () {})();
       }
       // Return a generator that yields the peeked chunk first, then the rest.
       return (async function* () {
@@ -181,9 +180,7 @@ async function with429ProbeStream(
     }
   }
   markQuotaRunningOut(providerId);
-  providerRepo
-    .update(providerId, { quotaRunningOut: true })
-    .catch(() => {});
+  providerRepo.update(providerId, { quotaRunningOut: true }).catch(() => {});
   throw last429!;
 }
 
@@ -291,10 +288,14 @@ export async function dispatchChat(
   const model = await loadModel(modelId);
   // Fetch all enabled candidates and split by protocol compatibility.
   const all = await providerModelRepo.findCandidates(modelId);
+  const lbMode = getRuntimeSettingStringSync(
+    "LOAD_BALANCE_MODE",
+  ) as LoadBalanceMode;
+  const selectOpts = { mode: lbMode, cursorKey: modelId };
   const sameProtocol = all.filter(
     (c) => candidateApiMode(c, ctx.apiModeIn) === ctx.apiModeIn,
   );
-  let sorted = selectCandidates(sameProtocol);
+  let sorted = selectCandidates(sameProtocol, selectOpts);
   // If no same-protocol candidates, try cross-protocol.
   if (sorted.length === 0) {
     const crossProtocol = all.filter(
@@ -302,7 +303,7 @@ export async function dispatchChat(
         candidateApiMode(c, ctx.apiModeIn) !== null &&
         candidateApiMode(c, ctx.apiModeIn) !== ctx.apiModeIn,
     );
-    sorted = selectCandidates(crossProtocol);
+    sorted = selectCandidates(crossProtocol, selectOpts);
   }
   if (sorted.length === 0) {
     throw new NoCandidateError(
@@ -545,10 +546,14 @@ export async function dispatchChatStream(
   const model = await loadModel(modelId);
   // Fetch all enabled candidates and split by protocol compatibility.
   const all = await providerModelRepo.findCandidates(modelId);
+  const lbMode = getRuntimeSettingStringSync(
+    "LOAD_BALANCE_MODE",
+  ) as LoadBalanceMode;
+  const selectOpts = { mode: lbMode, cursorKey: modelId };
   const sameProtocol = all.filter(
     (c) => candidateApiMode(c, ctx.apiModeIn) === ctx.apiModeIn,
   );
-  let sorted = selectCandidates(sameProtocol);
+  let sorted = selectCandidates(sameProtocol, selectOpts);
   // If no same-protocol candidates, try cross-protocol.
   if (sorted.length === 0) {
     const crossProtocol = all.filter(
@@ -556,7 +561,7 @@ export async function dispatchChatStream(
         candidateApiMode(c, ctx.apiModeIn) !== null &&
         candidateApiMode(c, ctx.apiModeIn) !== ctx.apiModeIn,
     );
-    sorted = selectCandidates(crossProtocol);
+    sorted = selectCandidates(crossProtocol, selectOpts);
   }
   if (sorted.length === 0) {
     throw new NoCandidateError(

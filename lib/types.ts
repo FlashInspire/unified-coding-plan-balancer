@@ -90,6 +90,7 @@ export interface ApiKeyRow {
   id: string;
   keyHash: string;
   name: string;
+  ownerId: string | null;
   enabled: boolean;
   createdAt: Date;
   lastUsedAt: Date | null;
@@ -102,10 +103,16 @@ export interface ApiKeyRow {
   monthQuotaResetAt: Date | null;
 }
 
+export type UserRole = "admin" | "user";
+
 export interface AdminUserRow {
   id: string;
   username: string;
   passwordHash: string;
+  role: UserRole;
+  email: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
   createdAt: Date;
 }
 

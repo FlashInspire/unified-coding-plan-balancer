@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { NextRequest } from "next/server";
-import { requireAdmin } from "../_lib/guard";
+import { requireAuth } from "../_lib/guard";
 import { adminUserRepo } from "@/lib/repositories/adminUserRepo";
 import { verifyPassword } from "@/lib/auth/password";
 
@@ -10,20 +10,15 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest): Promise<Response> {
-  const denied = await requireAdmin();
-  if (denied) return denied;
+  const authResult = await requireAuth();
+  if (authResult instanceof Response) return authResult;
+  const session = authResult;
 
   try {
     const body = schema.parse(await req.json());
 
-    const session = await import("@/lib/auth/nextauth").then((m) => m.auth());
-    const userId = session?.user?.id;
-    if (!userId) {
-      return Response.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userName = session?.user?.name ?? "";
-    const user = await adminUserRepo.findByUsername(userName);
+    const userId = session.user.id;
+    const user = await adminUserRepo.findById(userId);
     if (!user) {
       return Response.json({ error: "User not found" }, { status: 404 });
     }

@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth/nextauth";
 import { adminUserRepo } from "@/lib/repositories/adminUserRepo";
 import { userPreferenceRepo } from "@/lib/repositories/userPreferenceRepo";
+import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,10 @@ export async function GET(): Promise<Response> {
     data: {
       id: user.id,
       username: user.username,
+      role: user.role,
+      email: user.email,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
       mustChangePassword: user.mustChangePassword,
       lastSignInAt: user.lastSignInAt?.toISOString() ?? null,
       createdAt: user.createdAt.toISOString(),
@@ -29,4 +34,28 @@ export async function GET(): Promise<Response> {
       theme: prefs.theme,
     },
   });
+}
+
+const patchProfileSchema = z.object({
+  email: z.string().max(256).nullable().optional(),
+  displayName: z.string().max(128).nullable().optional(),
+  avatarUrl: z.string().max(1024).nullable().optional(),
+});
+
+export async function PATCH(req: Request): Promise<Response> {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const body = patchProfileSchema.parse(await req.json());
+    await adminUserRepo.updateProfile(session.user.id, body);
+    return Response.json({ ok: true });
+  } catch (e) {
+    return Response.json(
+      { error: e instanceof Error ? e.message : "Invalid request" },
+      { status: 400 },
+    );
+  }
 }

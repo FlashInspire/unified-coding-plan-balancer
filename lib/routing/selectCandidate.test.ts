@@ -5,6 +5,7 @@ import {
   isQuotaRunningOut,
   markQuotaRunningOut,
   resetQuotaRetries,
+  __resetRoundRobinCursorsForTests,
 } from "@/lib/routing/selectCandidate";
 import type { RoutingCandidate } from "@/lib/repositories/providerModelRepo";
 import type { ProviderModelRow, ProviderRow } from "@/lib/types";
@@ -219,5 +220,144 @@ describe("quota retry tracking", () => {
 
     // Counter should be reset, so next increment starts at 1
     expect(incrementQuotaExhaustedRetry("test-provider")).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// round-robin mode
+// ---------------------------------------------------------------------------
+
+describe("selectCandidates - round-robin", () => {
+  beforeEach(() => {
+    __resetRoundRobinCursorsForTests();
+  });
+
+  it("cycles through candidates in stable id order", () => {
+    const candidates = [
+      mkCandidate("c-provider", 10, true),
+      mkCandidate("a-provider", 10, true),
+      mkCandidate("b-provider", 10, true),
+    ];
+    const opts = { mode: "round-robin" as const, cursorKey: "m" };
+
+    // Sorted by id: a, b, c — then rotation: 0→a, 1→b, 2→c, 3→a, ...
+    const ids: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      const out = selectCandidates(candidates, opts);
+      ids.push(out[0].provider.id);
+    }
+    // Should cycle: a, b, c, a, b, c
+    expect(ids).toEqual([
+      "a-provider",
+      "b-provider",
+      "c-provider",
+      "a-provider",
+      "b-provider",
+      "c-provider",
+    ]);
+  });
+
+  it("maintains independent cursors per cursorKey", () => {
+    const candidates = [mkCandidate("x", 10, true), mkCandidate("y", 10, true)];
+
+    const out1 = selectCandidates(candidates, {
+      mode: "round-robin",
+      cursorKey: "modelA",
+    });
+    const out2 = selectCandidates(candidates, {
+      mode: "round-robin",
+      cursorKey: "modelB",
+    });
+
+    // Both cursors start at 0, so both should pick the same first candidate
+    // (sorted by id: x < y → x first)
+    expect(out1[0].provider.id).toBe("x");
+    expect(out2[0].provider.id).toBe("x");
+
+    // Second call for modelA should pick y, while modelB still picks x next time
+    const out1b = selectCandidates(candidates, {
+      mode: "round-robin",
+      cursorKey: "modelA",
+    });
+    expect(out1b[0].provider.id).toBe("y");
+  });
+
+  it("filters out unhealthy and running-out candidates", () => {
+    markQuotaRunningOut("bad");
+    const candidates = [
+      mkCandidate("bad", 10, true),
+      mkCandidate("good", 50, true),
+    ];
+    const out = selectCandidates(candidates, {
+      mode: "round-robin",
+      cursorKey: "m",
+    });
+    expect(out.map((c) => c.provider.id)).toEqual(["good"]);
+    resetQuotaRetries("bad");
+  });
+
+  it("returns single candidate as-is", () => {
+    const candidates = [mkCandidate("only", 10, true)];
+    const out = selectCandidates(candidates, {
+      mode: "round-robin",
+      cursorKey: "m",
+    });
+    expect(out.map((c) => c.provider.id)).toEqual(["only"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// strict-weight mode
+// ---------------------------------------------------------------------------
+
+describe("selectCandidates - strict-weight", () => {
+  it("higher weight candidate wins more often", () => {
+    const firsts: Record<string, number> = {};
+    for (let i = 0; i < 1000; i++) {
+      const out = selectCandidates(
+        [mkCandidate("lowW", 0, true, 1), mkCandidate("highW", 0, true, 9)],
+        { mode: "strict-weight" },
+      );
+      const first = out[0].provider.id;
+      firsts[first] = (firsts[first] ?? 0) + 1;
+    }
+    // With weight 9 vs 1, highW should win ~90% of the time
+    expect(firsts["highW"]).toBeGreaterThan(800);
+    expect(firsts["highW"]).toBeLessThan(980);
+  });
+
+  it("ignores quota usage completely", () => {
+    // Even with 100% usage and weight 9, high-weight should still dominate
+    const firsts: Record<string, number> = {};
+    for (let i = 0; i < 1000; i++) {
+      const out = selectCandidates(
+        [mkCandidate("lowW", 0, true, 1), mkCandidate("highW", 100, true, 9)],
+        { mode: "strict-weight" },
+      );
+      const first = out[0].provider.id;
+      firsts[first] = (firsts[first] ?? 0) + 1;
+    }
+    // highW still wins most of the time despite 100% usage
+    expect(firsts["highW"]).toBeGreaterThan(800);
+  });
+
+  it("filters out running-out candidates", () => {
+    markQuotaRunningOut("bad");
+    const candidates = [
+      mkCandidate("bad", 10, true, 10),
+      mkCandidate("good", 50, true, 1),
+    ];
+    const out = selectCandidates(candidates, { mode: "strict-weight" });
+    expect(out.map((c) => c.provider.id)).toEqual(["good"]);
+    resetQuotaRetries("bad");
+  });
+
+  it("filters out unhealthy candidates", () => {
+    const candidates = [
+      mkCandidate("dead", 0, false, 10),
+      mkCandidate("alive", 50, true, 1),
+    ];
+    const out = selectCandidates(candidates, { mode: "strict-weight" });
+    expect(out.map((c) => c.provider.id)).toEqual(["alive"]);
   });
 });

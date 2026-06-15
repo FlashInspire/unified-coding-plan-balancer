@@ -39,6 +39,11 @@ const schema = z.object({
 
   /** Sticky routing TTL in milliseconds. Default 5 minutes. */
   STICKY_TTL_MS: z.coerce.number().int().positive().default(300_000),
+
+  /** Load-balance mode for provider selection. */
+  LOAD_BALANCE_MODE: z
+    .enum(["weighted", "round-robin", "strict-weight"])
+    .default("weighted"),
 });
 
 export const env = schema.parse(process.env);
@@ -68,6 +73,11 @@ const RUNTIME_DEFAULTS: Record<string, number> = {
   STICKY_TTL_MS: env.STICKY_TTL_MS,
 };
 
+/** Default values for runtime-overridable string settings. */
+const RUNTIME_STRING_DEFAULTS: Record<string, string> = {
+  LOAD_BALANCE_MODE: env.LOAD_BALANCE_MODE,
+};
+
 /**
  * Load DB overrides into memory. Safe to call multiple times (idempotent).
  * Called lazily on first `getRuntimeSetting()` and can be refreshed via
@@ -81,16 +91,24 @@ export async function loadRuntimeConfig(): Promise<void> {
     for (const [k, v] of Object.entries(RUNTIME_DEFAULTS)) {
       runtimeCache.set(k, v);
     }
+    for (const [k, v] of Object.entries(RUNTIME_STRING_DEFAULTS)) {
+      if (!runtimeCache.has(k)) runtimeCache.set(k, v);
+    }
     for (const [k, v] of Object.entries(overrides)) {
       if (k in RUNTIME_DEFAULTS) {
         const num = Number(v);
         runtimeCache.set(k, isNaN(num) ? v : num);
+      } else if (k in RUNTIME_STRING_DEFAULTS) {
+        runtimeCache.set(k, v);
       }
     }
     runtimeLoaded = true;
   } catch {
     // DB not ready yet — fall back to env defaults
     for (const [k, v] of Object.entries(RUNTIME_DEFAULTS)) {
+      if (!runtimeCache.has(k)) runtimeCache.set(k, v);
+    }
+    for (const [k, v] of Object.entries(RUNTIME_STRING_DEFAULTS)) {
       if (!runtimeCache.has(k)) runtimeCache.set(k, v);
     }
     runtimeLoaded = true;
@@ -123,4 +141,25 @@ export function getRuntimeSettingSync(key: string): number {
   const v = runtimeCache.get(key);
   if (v != null) return Number(v);
   return Number(RUNTIME_DEFAULTS[key] ?? 0);
+}
+
+/**
+ * Get a runtime string setting. Falls back to env default if DB is
+ * unavailable. Must be awaited on first call; subsequent calls from cache.
+ */
+export async function getRuntimeSettingString(key: string): Promise<string> {
+  if (!runtimeLoaded) await loadRuntimeConfig();
+  const v = runtimeCache.get(key);
+  if (v != null) return String(v);
+  return RUNTIME_STRING_DEFAULTS[key] ?? "";
+}
+
+/**
+ * Synchronous string accessor for hot paths (after initial load).
+ * Returns env default if cache hasn't been populated yet.
+ */
+export function getRuntimeSettingStringSync(key: string): string {
+  const v = runtimeCache.get(key);
+  if (v != null) return String(v);
+  return RUNTIME_STRING_DEFAULTS[key] ?? "";
 }

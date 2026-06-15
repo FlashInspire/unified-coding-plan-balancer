@@ -77,6 +77,7 @@ model Provider {
   updatedAt                   DateTime  @updatedAt
 
   providerModels ProviderModel[]
+}
 
 // -----------------------------------------------------------------------------
 // ProviderModel — instance of a Model on a specific Provider, with overrides.
@@ -125,6 +126,7 @@ model ApiKey {
   id                  String    @id @default(cuid())
   keyHash             String    @unique // SHA-256 hex of plaintext key
   name                String
+  ownerId             String? // null = admin-owned (legacy keys)
   enabled             Boolean   @default(true)
   createdAt           DateTime  @default(now())
   lastUsedAt          DateTime?
@@ -136,6 +138,10 @@ model ApiKey {
   rollingQuotaResetAt DateTime?
   weekQuotaResetAt    DateTime?
   monthQuotaResetAt   DateTime?
+
+  owner AdminUser? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId])
 }
 
 // -----------------------------------------------------------------------------
@@ -145,11 +151,16 @@ model AdminUser {
   id                 String    @id @default(cuid())
   username           String    @unique
   passwordHash       String
+  role               String    @default("user") // "admin" | "user"
+  email              String? // optional, no validation
+  displayName        String? // shown in UI
+  avatarUrl          String? // optional URL; UI falls back to initial-letter circle
   mustChangePassword Boolean   @default(false)
   lastSignInAt       DateTime?
   createdAt          DateTime  @default(now())
 
   preference UserPreference?
+  apiKeys    ApiKey[]
 }
 
 // -----------------------------------------------------------------------------
@@ -157,7 +168,7 @@ model AdminUser {
 // -----------------------------------------------------------------------------
 model UserPreference {
   userId    String   @id
-  language  String   @default("en")   // "en" | "zh"
+  language  String   @default("en") // "en" | "zh"
   theme     String   @default("system") // "light" | "dark" | "system"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
