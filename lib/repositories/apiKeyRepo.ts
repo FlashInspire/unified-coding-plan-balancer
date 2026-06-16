@@ -9,6 +9,7 @@ import type { ApiKeyRow } from "@/lib/types";
 export interface ApiKeyPatch {
   name?: string;
   enabled?: boolean;
+  ownerId?: string;
 }
 
 export const apiKeyRepo = {
@@ -60,10 +61,19 @@ export const apiKeyRepo = {
       data: {
         ...(patch.name !== undefined ? { name: patch.name } : {}),
         ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+        ...(patch.ownerId !== undefined ? { ownerId: patch.ownerId } : {}),
       },
     });
   },
 
+  async delete(id: string): Promise<void> {
+    await prisma.apiKey.delete({ where: { id } });
+  },
+
+  /**
+   * Regenerate the plaintext secret for an existing API key.
+   * Returns the new plaintext (only available at this moment) along with id/name.
+   */
   async regenerate(id: string): Promise<CreatedApiKey> {
     const plaintext = generatePlaintext();
     const keyHash = sha256Hex(plaintext);
@@ -72,10 +82,6 @@ export const apiKeyRepo = {
       data: { keyHash },
     });
     return { id: row.id, name: row.name, plaintext };
-  },
-
-  async delete(id: string): Promise<void> {
-    await prisma.apiKey.delete({ where: { id } });
   },
 
   /** Bulk increment per-dimension token counters for API keys (called by cron flusher). */
@@ -89,7 +95,7 @@ export const apiKeyRepo = {
       }
     >,
   ): Promise<void> {
-    for (const [keyId, dims] of increments) {
+    for (const [apiKeyId, dims] of increments) {
       if (
         dims.inputTokens <= 0 &&
         dims.cachedReadTokens <= 0 &&
@@ -106,8 +112,9 @@ export const apiKeyRepo = {
             weekOutputTokensUsed        = weekOutputTokensUsed + ${dims.outputTokens},
             monthInputTokensUsed        = monthInputTokensUsed + ${dims.inputTokens},
             monthCachedReadTokensUsed   = monthCachedReadTokensUsed + ${dims.cachedReadTokens},
-            monthOutputTokensUsed       = monthOutputTokensUsed + ${dims.outputTokens}
-        WHERE id = ${keyId}
+            monthOutputTokensUsed       = monthOutputTokensUsed + ${dims.outputTokens},
+            lastUsedAt                  = NOW()
+        WHERE id = ${apiKeyId}
       `;
     }
   },

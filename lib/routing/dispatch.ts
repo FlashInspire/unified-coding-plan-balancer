@@ -385,6 +385,7 @@ export async function dispatchChat(
       ts: started,
       apiKeyId: ctx.apiKeyId,
       modelId,
+      modelName: model.displayName,
       providerId: c.provider.id,
       providerName: c.provider.name,
       realModelId: params.realModelId,
@@ -426,6 +427,7 @@ export async function dispatchChat(
         ts: started,
         apiKeyId: ctx.apiKeyId,
         modelId,
+        modelName: model.displayName,
         providerId: c.provider.id,
         providerName: c.provider.name,
         realModelId: params.realModelId,
@@ -482,8 +484,11 @@ export async function dispatchChat(
       // Update latest aggregate report rows for all 4 periods.
       void updateLatestReports({
         providerId: c.provider.id,
+        providerName: c.provider.name,
         modelId,
+        modelName: model.displayName,
         apiKeyId: ctx.apiKeyId,
+        apiKeyName: ctx.apiKeyName,
         inputTokens: resp.usage.inputTokens,
         cachedInputTokens:
           resp.usage.cachedReadTokens + resp.usage.cacheWriteTokens,
@@ -517,6 +522,7 @@ export async function dispatchChat(
         ts: started,
         apiKeyId: ctx.apiKeyId,
         modelId,
+        modelName: model.displayName,
         providerId: c.provider.id,
         providerName: c.provider.name,
         realModelId: params.realModelId,
@@ -673,6 +679,7 @@ export async function dispatchChatStream(
       ts: started,
       apiKeyId: ctx.apiKeyId,
       modelId,
+      modelName: model.displayName,
       providerId: c.provider.id,
       providerName: c.provider.name,
       realModelId: params.realModelId,
@@ -708,6 +715,7 @@ export async function dispatchChatStream(
         requestId,
         ctx,
         modelId,
+        modelName: model.displayName,
         provider: c.provider,
         pm: c.pm,
         params,
@@ -767,6 +775,7 @@ function wrapStream(
     requestId: number | null;
     ctx: DispatchContext;
     modelId: string;
+    modelName: string;
     provider: ProviderRow;
     pm: ProviderModelRow;
     params: ResolvedParams;
@@ -867,6 +876,7 @@ function wrapStream(
             ts: ctx.started,
             apiKeyId: ctx.ctx.apiKeyId,
             modelId: ctx.modelId,
+            modelName: ctx.modelName,
             providerId: ctx.provider.id,
             providerName: ctx.provider.name,
             realModelId: ctx.params.realModelId,
@@ -923,8 +933,11 @@ function wrapStream(
           // Update latest aggregate report rows for all 4 periods.
           void updateLatestReports({
             providerId: ctx.provider.id,
+            providerName: ctx.provider.name,
             modelId: ctx.modelId,
+            modelName: ctx.modelName,
             apiKeyId: ctx.ctx.apiKeyId,
+            apiKeyName: ctx.ctx.apiKeyName,
             inputTokens: usage.inputTokens,
             cachedInputTokens: usage.cachedReadTokens + usage.cacheWriteTokens,
             outputTokens: outTokens,
@@ -994,6 +1007,7 @@ export async function dispatchDirectChat(
     ts: started,
     apiKeyId: ctx.apiKeyId,
     modelId,
+    modelName: model.displayName,
     providerId: c.provider.id,
     providerName: c.provider.name,
     realModelId: params.realModelId,
@@ -1023,6 +1037,7 @@ export async function dispatchDirectChat(
       ts: started,
       apiKeyId: ctx.apiKeyId,
       modelId,
+      modelName: model.displayName,
       providerId: c.provider.id,
       providerName: c.provider.name,
       realModelId: params.realModelId,
@@ -1077,8 +1092,11 @@ export async function dispatchDirectChat(
     // Update latest aggregate report rows for all 4 periods.
     void updateLatestReports({
       providerId: c.provider.id,
+      providerName: c.provider.name,
       modelId,
+      modelName: model.displayName,
       apiKeyId: ctx.apiKeyId,
+      apiKeyName: ctx.apiKeyName,
       inputTokens: resp.usage.inputTokens,
       cachedInputTokens:
         resp.usage.cachedReadTokens + resp.usage.cacheWriteTokens,
@@ -1102,6 +1120,7 @@ export async function dispatchDirectChat(
       ts: started,
       apiKeyId: ctx.apiKeyId,
       modelId,
+      modelName: model.displayName,
       providerId: c.provider.id,
       providerName: c.provider.name,
       realModelId: params.realModelId,
@@ -1176,6 +1195,7 @@ export async function dispatchDirectChatStream(
     ts: started,
     apiKeyId: ctx.apiKeyId,
     modelId,
+    modelName: model.displayName,
     providerId: c.provider.id,
     providerName: c.provider.name,
     realModelId: params.realModelId,
@@ -1208,6 +1228,7 @@ export async function dispatchDirectChatStream(
       requestId,
       ctx,
       modelId,
+      modelName: model.displayName,
       provider: c.provider,
       pm: c.pm,
       params,

@@ -4,6 +4,7 @@ import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { I18nProvider } from "./i18n-provider";
 import { ThemeProvider } from "./theme-provider";
+import { DateTimeFormatProvider } from "./datetime-format-provider";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Messages = Record<string, any>;
@@ -23,6 +24,8 @@ export function AdminProviders({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
   const sessionLang = (session?.user as { language?: string })?.language;
   const sessionTheme = (session?.user as { theme?: string })?.theme;
+  const sessionDateTimeFormat = (session?.user as { dateTimeFormat?: string })?.dateTimeFormat;
+  const sessionUse24Hour = (session?.user as { use24Hour?: boolean })?.use24Hour;
 
   // Resolve: session > localStorage > default
   const locale =
@@ -33,6 +36,9 @@ export function AdminProviders({ children }: { children: React.ReactNode }) {
     sessionTheme ??
     (typeof window !== "undefined" ? localStorage.getItem(LS_THEME) : null) ??
     "system";
+
+  const dateTimeFormat = sessionDateTimeFormat ?? "YYYY-MM-DD HH:mm:ss";
+  const use24Hour = sessionUse24Hour ?? true;
 
   // Persist to localStorage whenever session provides a value.
   useEffect(() => {
@@ -72,16 +78,20 @@ export function AdminProviders({ children }: { children: React.ReactNode }) {
     // show as raw keys briefly, which is acceptable on first load.
     return (
       <ThemeProvider initialTheme={theme as "light" | "dark" | "system"}>
-        {children}
+        <DateTimeFormatProvider dateTimeFormat={dateTimeFormat} use24Hour={use24Hour}>
+          {children}
+        </DateTimeFormatProvider>
       </ThemeProvider>
     );
   }
 
   return (
     <ThemeProvider initialTheme={theme as "light" | "dark" | "system"}>
-      <I18nProvider initialLocale={locale} initialMessages={messages}>
-        {children}
-      </I18nProvider>
+      <DateTimeFormatProvider dateTimeFormat={dateTimeFormat} use24Hour={use24Hour}>
+        <I18nProvider initialLocale={locale} initialMessages={messages}>
+          {children}
+        </I18nProvider>
+      </DateTimeFormatProvider>
     </ThemeProvider>
   );
 }

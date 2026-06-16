@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { DataTable } from "../_components/data-table";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { apiFetch } from "../_components/api";
 import {
   ReportFiltersBar,
@@ -9,20 +8,16 @@ import {
   type Granularity,
 } from "./_components/report-filters";
 import type { AggregateReportRow } from "@/lib/metrics/queryRouter";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "../_components/i18n-provider";
 import { useSession } from "next-auth/react";
-
-const PAGE_SIZES = [25, 50, 100] as const;
+import { useFormatDate } from "../_components/datetime-format-provider";
+import { RankBarChart } from "../_components/rank-bar-chart";
+import { displayName } from "@/lib/utils";
+import {
+  GroupedReportTable,
+  type GroupByLevel,
+} from "./_components/grouped-report-table";
 
 type SessionUser = {
   role?: string;
@@ -30,7 +25,9 @@ type SessionUser = {
 
 function toEpochMs(dateStr: string, endOfDay = false): number | undefined {
   if (!dateStr) return undefined;
-  const d = new Date(dateStr);
+  const [y, m, day] = dateStr.split("-").map(Number);
+  if (!y || !m || !day) return undefined;
+  const d = new Date(Date.UTC(y, m - 1, day));
   if (isNaN(d.getTime())) return undefined;
   if (endOfDay) {
     d.setUTCHours(23, 59, 59, 999);
@@ -40,14 +37,16 @@ function toEpochMs(dateStr: string, endOfDay = false): number | undefined {
 
 export default function ReportPage() {
   const t = useT();
+  const formatDate = useFormatDate();
   const { data: session } = useSession();
   const isAdmin = (session?.user as SessionUser)?.role === "admin";
 
   const [rows, setRows] = useState<AggregateReportRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(50);
+
+  const [chartRows, setChartRows] = useState<AggregateReportRow[]>([]);
+  const [chartLoading, setChartLoading] = useState(false);
 
   const [filters, setFilters] = useState<ReportFilters>({
     granularity: "day" as Granularity,
@@ -56,6 +55,7 @@ export default function ReportPage() {
     apiKeyId: "",
     from: "",
     to: "",
+    groupBy: ["period", "model", "provider", "apiKey"],
   });
 
   // Options for filter dropdowns
@@ -76,25 +76,46 @@ export default function ReportPage() {
     }
   }, [isAdmin]);
 
-  // Derive model/provider options from loaded rows
-  const modelOptions = [...new Set(rows.map((r) => r.model_id))].sort();
-  const providerOptions = [...new Set(rows.map((r) => r.provider_id))].sort();
+  // Derive model/provider options from loaded rows.
+  // Each option carries the underlying id (used as the filter value) and a
+  // human-friendly display name (falling back to id when name is missing).
+  const modelOptions = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of rows) {
+      if (!m.has(r.model_id))
+        m.set(r.model_id, displayName(r.model_name, r.model_id));
+    }
+    return [...m.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [rows]);
+
+  const providerOptions = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of rows) {
+      if (!m.has(r.provider_id))
+        m.set(r.provider_id, displayName(r.provider_name, r.provider_id));
+    }
+    return [...m.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [rows]);
 
   const loadReport = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
         granularity: filters.granularity,
-        limit: String(pageSize),
-        offset: String(page * pageSize),
+        limit: "1000",
+        offset: "0",
       });
       if (filters.modelId) params.set("modelId", filters.modelId);
       if (filters.providerId) params.set("providerId", filters.providerId);
       if (filters.apiKeyId) params.set("apiKeyId", filters.apiKeyId);
       const fromMs = toEpochMs(filters.from);
       const toMs = toEpochMs(filters.to, true);
-      if (fromMs) params.set("from", String(fromMs));
-      if (toMs) params.set("to", String(toMs));
+      if (fromMs !== undefined) params.set("from", String(fromMs));
+      if (toMs !== undefined) params.set("to", String(toMs));
 
       const r = await apiFetch<{ data: AggregateReportRow[]; total: number }>(
         `/api/admin/aggregate-reports?${params}`,
@@ -106,42 +127,70 @@ export default function ReportPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters, page, pageSize]);
+  }, [filters]);
+
+  const loadCharts = useCallback(async () => {
+    setChartLoading(true);
+    try {
+      const params = new URLSearchParams({
+        granularity: filters.granularity,
+        limit: "1000",
+        offset: "0",
+      });
+      if (filters.modelId) params.set("modelId", filters.modelId);
+      if (filters.providerId) params.set("providerId", filters.providerId);
+      if (filters.apiKeyId) params.set("apiKeyId", filters.apiKeyId);
+      const fromMs = toEpochMs(filters.from);
+      const toMs = toEpochMs(filters.to, true);
+      if (fromMs !== undefined) params.set("from", String(fromMs));
+      if (toMs !== undefined) params.set("to", String(toMs));
+
+      const r = await apiFetch<{ data: AggregateReportRow[]; total: number }>(
+        `/api/admin/aggregate-reports?${params}`,
+      );
+      setChartRows(r.data);
+    } catch {
+      // Keep existing chart data on error
+    } finally {
+      setChartLoading(false);
+    }
+  }, [filters]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadReport();
-  }, [loadReport]);
+    void loadCharts();
+  }, [loadReport, loadCharts]);
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  // Effective group-by levels: always include period, optionally include user-selected
+  // model/provider/apiKey (apiKey hidden for non-admin).
+  const effectiveGroupBy = useMemo<GroupByLevel[]>(() => {
+    return filters.groupBy.filter((l) => l !== "apiKey" || isAdmin);
+  }, [filters.groupBy, isAdmin]);
 
   const fmtPeriod = (periodMs: number, gran: Granularity) => {
-    const d = new Date(periodMs);
+    const start = new Date(periodMs);
+    let endMs: number;
     switch (gran) {
       case "hour":
-        return d.toLocaleString(undefined, {
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
+        endMs = periodMs + 3_600_000 - 1;
+        break;
       case "day":
-        return d.toLocaleDateString(undefined, {
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-        });
-      case "week": {
-        const end = new Date(periodMs + 6 * 86_400_000);
-        return `${d.toLocaleDateString()} – ${end.toLocaleDateString()}`;
+        endMs = periodMs + 86_400_000 - 1;
+        break;
+      case "week":
+        endMs = periodMs + 7 * 86_400_000 - 1;
+        break;
+      case "month": {
+        // Month length varies — compute next month boundary in UTC.
+        const next = new Date(
+          Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1),
+        );
+        endMs = next.getTime() - 1;
+        break;
       }
-      case "month":
-        return d.toLocaleDateString(undefined, {
-          year: "numeric",
-          month: "long",
-        });
     }
+    return `${formatDate(start)} – ${formatDate(new Date(endMs))}`;
   };
 
   const fmtTokens = (v: number) =>
@@ -150,6 +199,176 @@ export default function ReportPage() {
       : v >= 1_000
         ? `${(v / 1_000).toFixed(1)}K`
         : String(v);
+
+  // Build lookup for API key names
+  const apiKeyNameMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const k of apiKeyOptions) m.set(k.id, k.name);
+    return m;
+  }, [apiKeyOptions]);
+
+  const chartKeyData = useMemo(() => {
+    const m = new Map<
+      string,
+      {
+        name: string;
+        calls: number;
+        input_tokens: number;
+        cached_input_tokens: number;
+        output_tokens: number;
+      }
+    >();
+    for (const r of chartRows) {
+      const k = displayName(
+        r.api_key_name ?? apiKeyNameMap.get(r.api_key_id),
+        r.api_key_id,
+      );
+      const existing = m.get(k);
+      if (existing) {
+        existing.calls += r.requests;
+        existing.input_tokens += r.input_tokens;
+        existing.cached_input_tokens += r.cached_input_tokens;
+        existing.output_tokens += r.output_tokens;
+      } else {
+        m.set(k, {
+          name: k,
+          calls: r.requests,
+          input_tokens: r.input_tokens,
+          cached_input_tokens: r.cached_input_tokens,
+          output_tokens: r.output_tokens,
+        });
+      }
+    }
+    return [...m.values()].sort((a, b) => b.calls - a.calls).slice(0, 10);
+  }, [chartRows, apiKeyNameMap]);
+
+  const chartModelData = useMemo(() => {
+    const m = new Map<
+      string,
+      {
+        name: string;
+        calls: number;
+        input_tokens: number;
+        cached_input_tokens: number;
+        output_tokens: number;
+      }
+    >();
+    for (const r of chartRows) {
+      const k = displayName(r.model_name, r.model_id);
+      const existing = m.get(k);
+      if (existing) {
+        existing.calls += r.requests;
+        existing.input_tokens += r.input_tokens;
+        existing.cached_input_tokens += r.cached_input_tokens;
+        existing.output_tokens += r.output_tokens;
+      } else {
+        m.set(k, {
+          name: k,
+          calls: r.requests,
+          input_tokens: r.input_tokens,
+          cached_input_tokens: r.cached_input_tokens,
+          output_tokens: r.output_tokens,
+        });
+      }
+    }
+    return [...m.values()].sort((a, b) => b.calls - a.calls).slice(0, 10);
+  }, [chartRows]);
+
+  const chartProviderData = useMemo(() => {
+    const m = new Map<
+      string,
+      {
+        name: string;
+        calls: number;
+        input_tokens: number;
+        cached_input_tokens: number;
+        output_tokens: number;
+      }
+    >();
+    for (const r of chartRows) {
+      const k = displayName(r.provider_name, r.provider_id);
+      const existing = m.get(k);
+      if (existing) {
+        existing.calls += r.requests;
+        existing.input_tokens += r.input_tokens;
+        existing.cached_input_tokens += r.cached_input_tokens;
+        existing.output_tokens += r.output_tokens;
+      } else {
+        m.set(k, {
+          name: k,
+          calls: r.requests,
+          input_tokens: r.input_tokens,
+          cached_input_tokens: r.cached_input_tokens,
+          output_tokens: r.output_tokens,
+        });
+      }
+    }
+    return [...m.values()].sort((a, b) => b.calls - a.calls).slice(0, 10);
+  }, [chartRows]);
+
+  // Format a period start as a compact label suitable for chart X-axis.
+  const fmtPeriodShort = useCallback(
+    (periodMs: number, gran: Granularity): string => {
+      const d = new Date(periodMs);
+      const yyyy = d.getUTCFullYear();
+      const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const dd = String(d.getUTCDate()).padStart(2, "0");
+      const hh = String(d.getUTCHours()).padStart(2, "0");
+      switch (gran) {
+        case "hour":
+          return `${mm}-${dd} ${hh}:00`;
+        case "day":
+          return `${yyyy}-${mm}-${dd}`;
+        case "week":
+          return `${yyyy}-${mm}-${dd}`;
+        case "month":
+          return `${yyyy}-${mm}`;
+      }
+    },
+    [],
+  );
+
+  const chartPeriodData = useMemo(() => {
+    const m = new Map<
+      number,
+      {
+        period_start: number;
+        name: string;
+        calls: number;
+        input_tokens: number;
+        cached_input_tokens: number;
+        output_tokens: number;
+      }
+    >();
+    for (const r of chartRows) {
+      const k = Number(r.period_start);
+      const existing = m.get(k);
+      if (existing) {
+        existing.calls += r.requests;
+        existing.input_tokens += r.input_tokens;
+        existing.cached_input_tokens += r.cached_input_tokens;
+        existing.output_tokens += r.output_tokens;
+      } else {
+        m.set(k, {
+          period_start: k,
+          name: fmtPeriodShort(k, filters.granularity),
+          calls: r.requests,
+          input_tokens: r.input_tokens,
+          cached_input_tokens: r.cached_input_tokens,
+          output_tokens: r.output_tokens,
+        });
+      }
+    }
+    // Sort chronologically ascending and cap to the most recent 20 periods.
+    const sorted = [...m.values()].sort(
+      (a, b) => a.period_start - b.period_start,
+    );
+    const tail = sorted.slice(-20);
+    return tail.map(({ period_start: _ps, ...rest }) => {
+      void _ps;
+      return rest;
+    });
+  }, [chartRows, filters.granularity, fmtPeriodShort]);
 
   return (
     <div className="space-y-4">
@@ -161,15 +380,36 @@ export default function ReportPage() {
         filters={filters}
         onChange={(f) => {
           setFilters(f);
-          setPage(0);
         }}
-        onRefresh={loadReport}
+        onRefresh={() => {
+          loadReport();
+          loadCharts();
+        }}
         loading={loading}
         modelOptions={modelOptions}
         providerOptions={providerOptions}
         apiKeyOptions={apiKeyOptions}
         isAdmin={isAdmin}
       />
+
+      {/* Charts */}
+      {chartLoading && chartRows.length === 0 ? (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-[200px] w-full" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <RankBarChart title="Period Usage" data={chartPeriodData} />
+          <RankBarChart title="Key Usage (period)" data={chartKeyData} />
+          <RankBarChart title="Model Usage (period)" data={chartModelData} />
+          <RankBarChart
+            title="Provider Usage (period)"
+            data={chartProviderData}
+          />
+        </div>
+      )}
 
       {loading && rows.length === 0 ? (
         <div className="space-y-2">
@@ -182,215 +422,15 @@ export default function ReportPage() {
           <div className="text-xs text-muted-foreground">
             {total === 0
               ? t("table.noData")
-              : `Showing ${page * pageSize + 1}–${Math.min((page + 1) * pageSize, total)} of ${total} entries`}
+              : `Showing ${rows.length} aggregated rows (of ${total} total)`}
           </div>
 
-          <DataTable
-            idKey="period_start"
-            tableClassName="table-fixed"
-            data={rows as unknown as Record<string, unknown>[]}
-            columns={[
-              {
-                key: "period_start",
-                label: "Period",
-                className: "w-[190px]",
-                render: (r) => (
-                  <span className="text-xs whitespace-nowrap">
-                    {fmtPeriod(Number(r.period_start), filters.granularity)}
-                  </span>
-                ),
-              },
-              { key: "model_id", label: "Model", className: "w-[130px]" },
-              {
-                key: "provider_id",
-                label: "Provider",
-                className: "w-[120px]",
-                render: (r) => (
-                  <span className="text-xs truncate block">
-                    {String(r.provider_id ?? "—")}
-                  </span>
-                ),
-              },
-              ...(isAdmin
-                ? [
-                    {
-                      key: "api_key_id" as string,
-                      label: "API Key",
-                      className: "w-[120px]",
-                      render: (r: Record<string, unknown>) => (
-                        <span className="font-mono text-xs truncate block">
-                          {String(r.api_key_id ?? "—")}
-                        </span>
-                      ),
-                    },
-                  ]
-                : []),
-              {
-                key: "requests",
-                label: "Reqs",
-                className: "w-[55px] text-right",
-                render: (r) => (
-                  <span className="text-xs tabular-nums">
-                    {Number(r.requests)}
-                  </span>
-                ),
-              },
-              {
-                key: "requests_ok",
-                label: "OK",
-                className: "w-[50px] text-right",
-                render: (r) => (
-                  <Badge
-                    variant="default"
-                    className="text-[10px] bg-green-600 font-mono"
-                  >
-                    {Number(r.requests_ok)}
-                  </Badge>
-                ),
-              },
-              {
-                key: "requests_err",
-                label: "Err",
-                className: "w-[50px] text-right",
-                render: (r) => {
-                  const n = Number(r.requests_err);
-                  return n > 0 ? (
-                    <Badge
-                      variant="destructive"
-                      className="text-[10px] font-mono"
-                    >
-                      {n}
-                    </Badge>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">0</span>
-                  );
-                },
-              },
-              {
-                key: "input_tokens",
-                label: "In Tok",
-                className: "w-[65px] text-right",
-                render: (r) => (
-                  <span className="text-xs tabular-nums">
-                    {fmtTokens(Number(r.input_tokens))}
-                  </span>
-                ),
-              },
-              {
-                key: "cached_input_tokens",
-                label: "Cached",
-                className: "w-[65px] text-right",
-                render: (r) => (
-                  <span className="text-xs tabular-nums">
-                    {fmtTokens(Number(r.cached_input_tokens))}
-                  </span>
-                ),
-              },
-              {
-                key: "output_tokens",
-                label: "Out Tok",
-                className: "w-[65px] text-right",
-                render: (r) => (
-                  <span className="text-xs tabular-nums">
-                    {fmtTokens(Number(r.output_tokens))}
-                  </span>
-                ),
-              },
-              {
-                key: "avg_ttft_ms",
-                label: "Avg TTFT",
-                className: "w-[75px]",
-                render: (r) => (
-                  <span className="text-xs tabular-nums">
-                    {r.avg_ttft_ms == null
-                      ? "—"
-                      : `${Number(r.avg_ttft_ms).toFixed(0)}ms`}
-                  </span>
-                ),
-              },
-              {
-                key: "avg_tps_out",
-                label: "Avg TPS",
-                className: "w-[65px]",
-                render: (r) => (
-                  <span className="text-xs tabular-nums">
-                    {r.avg_tps_out == null
-                      ? "—"
-                      : `${Number(r.avg_tps_out).toFixed(1)}`}
-                  </span>
-                ),
-              },
-            ]}
+          <GroupedReportTable
+            rows={rows}
+            levels={effectiveGroupBy}
+            fmtPeriod={(periodMs) => fmtPeriod(periodMs, filters.granularity)}
+            fmtTokens={fmtTokens}
           />
-
-          {/* Pagination */}
-          <div className="flex items-center justify-between pt-1">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Per page:</span>
-              <select
-                value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
-                className="h-7 rounded border border-input bg-background px-1.5 text-xs"
-              >
-                {PAGE_SIZES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setPage((p) => Math.max(0, p - 1));
-                    }}
-                    className={
-                      page === 0 ? "pointer-events-none opacity-50" : ""
-                    }
-                  />
-                </PaginationItem>
-                {Array.from({ length: Math.min(totalPages, 7) }).map((_, i) => {
-                  let pageNum: number;
-                  if (totalPages <= 7) pageNum = i;
-                  else if (page < 4) pageNum = i;
-                  else if (page > totalPages - 5) pageNum = totalPages - 7 + i;
-                  else pageNum = page - 3 + i;
-                  return (
-                    <PaginationItem key={pageNum}>
-                      <PaginationLink
-                        href="#"
-                        isActive={pageNum === page}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setPage(pageNum);
-                        }}
-                      >
-                        {pageNum + 1}
-                      </PaginationLink>
-                    </PaginationItem>
-                  );
-                })}
-                <PaginationItem>
-                  <PaginationNext
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setPage((p) => Math.min(totalPages - 1, p + 1));
-                    }}
-                    className={
-                      page >= totalPages - 1
-                        ? "pointer-events-none opacity-50"
-                        : ""
-                    }
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          </div>
         </>
       )}
     </div>

@@ -20,8 +20,11 @@ const GRANULARITIES: Granularity[] = ["hour", "day", "week", "month"];
 
 export interface LiveReportParams {
   providerId: string;
+  providerName: string;
   modelId: string;
+  modelName: string;
   apiKeyId: string;
+  apiKeyName: string;
   inputTokens: number;
   cachedInputTokens: number;
   outputTokens: number;
@@ -43,8 +46,11 @@ export async function updateLatestReports(
 ): Promise<void> {
   const {
     providerId,
+    providerName,
     modelId,
+    modelName,
     apiKeyId,
+    apiKeyName,
     inputTokens,
     cachedInputTokens,
     outputTokens,
@@ -62,6 +68,16 @@ export async function updateLatestReports(
   const tpsOutSumInc = tpsOut != null ? tpsOut : 0;
   const tpsOutCountInc = tpsOut != null ? 1 : 0;
 
+  // Treat empty / whitespace-only names as missing so the display layer can
+  // fall back to the underlying id.
+  const normName = (s: string): string | null => {
+    const t = s?.trim();
+    return t ? t : null;
+  };
+  const providerNameVal = normName(providerName);
+  const modelNameVal = normName(modelName);
+  const apiKeyNameVal = normName(apiKeyName);
+
   for (const granularity of GRANULARITIES) {
     try {
       const periodStartMs = truncateToGranularity(ts, granularity);
@@ -75,10 +91,14 @@ export async function updateLatestReports(
 
         if (existing) {
           if (existing.periodStart === periodStartBig) {
-            // Same period — increment in place
+            // Same period — increment in place and refresh names so renames
+            // propagate to the latest-period row.
             await tx.aggregateReport.update({
               where: { id: existing.id },
               data: {
+                providerName: providerNameVal,
+                modelName: modelNameVal,
+                apiKeyName: apiKeyNameVal,
                 requests: { increment: 1 },
                 requestsOk: { increment: requestsOkInc },
                 requestsErr: { increment: requestsErrInc },
@@ -117,8 +137,11 @@ export async function updateLatestReports(
             granularity,
             periodStart: periodStartBig,
             providerId,
+            providerName: providerNameVal,
             modelId,
+            modelName: modelNameVal,
             apiKeyId,
+            apiKeyName: apiKeyNameVal,
             latest: true,
             requests: 1,
             requestsOk: requestsOkInc,
@@ -133,6 +156,9 @@ export async function updateLatestReports(
           },
           update: {
             latest: true,
+            providerName: providerNameVal,
+            modelName: modelNameVal,
+            apiKeyName: apiKeyNameVal,
             requests: { increment: 1 },
             requestsOk: { increment: requestsOkInc },
             requestsErr: { increment: requestsErrInc },

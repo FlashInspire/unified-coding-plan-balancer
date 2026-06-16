@@ -198,11 +198,13 @@ model AdminUser {
 // UserPreference — per-user UI preferences (language, theme).
 // -----------------------------------------------------------------------------
 model UserPreference {
-  userId    String   @id
-  language  String   @default("en") // "en" | "zh"
-  theme     String   @default("system") // "light" | "dark" | "system"
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  userId         String   @id
+  language       String   @default("en") // "en" | "zh"
+  theme          String   @default("system") // "light" | "dark" | "system"
+  dateTimeFormat String   @default("YYYY-MM-DD HH:mm:ss")
+  use24Hour      Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   user AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -259,6 +261,7 @@ model RequestLog {
   userAgent         String? @map("user_agent")
   apiKeyName        String? @map("api_key_name")
   providerName      String? @map("provider_name")
+  modelName         String? @map("model_name")
   completed         Boolean @default(false)
   aborted           Boolean @default(false)
 
@@ -301,15 +304,18 @@ model UsageMinute {
 // across any single dimension or combination.
 // -----------------------------------------------------------------------------
 model AggregateReport {
-  id          Int     @id @default(autoincrement())
-  granularity String // "hour" | "day" | "week" | "month"
-  periodStart BigInt  @map("period_start") // epoch ms of the period boundary
-  providerId  String  @map("provider_id")
-  modelId     String  @map("model_id")
-  apiKeyId    String  @map("api_key_id")
+  id           Int     @id @default(autoincrement())
+  granularity  String // "hour" | "day" | "week" | "month"
+  periodStart  BigInt  @map("period_start") // epoch ms of the period boundary
+  providerId   String  @map("provider_id")
+  providerName String? @map("provider_name")
+  modelId      String  @map("model_id")
+  modelName    String? @map("model_name")
+  apiKeyId     String  @map("api_key_id")
+  apiKeyName   String? @map("api_key_name")
   /// True for the single active (current) period row per (granularity, providerId, modelId, apiKeyId).
   /// When a period rolls over, this is set to false and a new row is created with latest=true.
-  latest      Boolean @default(false)
+  latest       Boolean @default(false)
 
   requests          Int      @default(0)
   requestsOk        Int      @default(0) @map("requests_ok")

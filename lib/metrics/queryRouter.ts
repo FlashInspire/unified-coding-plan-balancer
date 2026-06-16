@@ -417,8 +417,11 @@ export interface AggregateReportRow {
   granularity: string;
   period_start: number;
   provider_id: string;
+  provider_name: string | null;
   model_id: string;
+  model_name: string | null;
   api_key_id: string;
+  api_key_name: string | null;
   requests: number;
   requests_ok: number;
   requests_err: number;
@@ -427,6 +430,10 @@ export interface AggregateReportRow {
   output_tokens: number;
   avg_ttft_ms: number | null;
   avg_tps_out: number | null;
+  ttft_ms_sum: number;
+  ttft_ms_count: number;
+  tps_out_sum: number;
+  tps_out_count: number;
 }
 
 /**
@@ -440,6 +447,7 @@ export async function aggregateReport(opts: {
   providerId?: string;
   modelId?: string;
   apiKeyId?: string;
+  apiKeyIds?: string[];
   limit?: number;
   offset?: number;
 }): Promise<{ rows: AggregateReportRow[]; total: number }> {
@@ -459,6 +467,8 @@ export async function aggregateReport(opts: {
   if (opts.providerId) where.providerId = opts.providerId;
   if (opts.modelId) where.modelId = opts.modelId;
   if (opts.apiKeyId) where.apiKeyId = opts.apiKeyId;
+  if (opts.apiKeyIds && opts.apiKeyIds.length > 0)
+    where.apiKeyId = { in: opts.apiKeyIds };
 
   const [rows, total] = await Promise.all([
     prisma.aggregateReport.findMany({
@@ -475,8 +485,11 @@ export async function aggregateReport(opts: {
       granularity: r.granularity,
       period_start: Number(r.periodStart),
       provider_id: r.providerId,
+      provider_name: r.providerName,
       model_id: r.modelId,
+      model_name: r.modelName,
       api_key_id: r.apiKeyId,
+      api_key_name: r.apiKeyName,
       requests: r.requests,
       requests_ok: r.requestsOk,
       requests_err: r.requestsErr,
@@ -487,6 +500,10 @@ export async function aggregateReport(opts: {
         r.ttftMsCount > 0 ? (r.ttftMsSum * 1.0) / r.ttftMsCount : null,
       avg_tps_out:
         r.tpsOutCount > 0 ? (r.tpsOutSum * 1.0) / r.tpsOutCount : null,
+      ttft_ms_sum: r.ttftMsSum,
+      ttft_ms_count: r.ttftMsCount,
+      tps_out_sum: r.tpsOutSum,
+      tps_out_count: r.tpsOutCount,
     })),
     total,
   };
@@ -503,6 +520,7 @@ export async function aggregateReportSummary(opts: {
   providerId?: string;
   modelId?: string;
   apiKeyId?: string;
+  apiKeyIds?: string[];
 }): Promise<{
   requests: number;
   requests_ok: number;
@@ -524,6 +542,8 @@ export async function aggregateReportSummary(opts: {
   if (opts.providerId) where.providerId = opts.providerId;
   if (opts.modelId) where.modelId = opts.modelId;
   if (opts.apiKeyId) where.apiKeyId = opts.apiKeyId;
+  if (opts.apiKeyIds && opts.apiKeyIds.length > 0)
+    where.apiKeyId = { in: opts.apiKeyIds };
 
   const result = await prisma.aggregateReport.aggregate({
     where: where as never,

@@ -169,14 +169,6 @@ export function computeNextNaturalMonthReset(now: Date): Date {
   return new Date(Date.UTC(y, m + 1, 1, 0, 0, 0, 0));
 }
 
-/** Next midnight UTC (daily reset). */
-export function computeNextNaturalDayReset(now: Date): Date {
-  const d = new Date(now);
-  d.setUTCHours(0, 0, 0, 0);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d;
-}
-
 // ---------------------------------------------------------------------------
 // Scheduler — exported for cron endpoint
 // ---------------------------------------------------------------------------
@@ -231,7 +223,7 @@ export async function resetTick(): Promise<ResetTickResult> {
 
       // Rolling — reset if past due, or backfill if resetAt is missing
       // quota = 0 or null means unlimited → skip scheduling
-      if (p.rollingQuota != null && p.rollingQuota > 0n) {
+      if (p.rollingQuota != null && p.rollingQuota > 0) {
         if (
           p.rollingQuotaResetAt &&
           p.rollingQuotaResetAt.getTime() <= nowTime
@@ -255,7 +247,7 @@ export async function resetTick(): Promise<ResetTickResult> {
       }
 
       // Weekly — reset if past due, or backfill if resetAt is missing
-      if (p.weekQuota != null && p.weekQuota > 0n) {
+      if (p.weekQuota != null && p.weekQuota > 0) {
         if (p.weekQuotaResetAt && p.weekQuotaResetAt.getTime() <= nowTime) {
           updates.weekQuotaUsed = 0;
           updates.weekCacheInputTokensUsed = 0;
@@ -268,7 +260,7 @@ export async function resetTick(): Promise<ResetTickResult> {
       }
 
       // Monthly — reset if past due, or backfill if resetAt is missing
-      if (p.monthQuota != null && p.monthQuota > 0n) {
+      if (p.monthQuota != null && p.monthQuota > 0) {
         if (p.monthQuotaResetAt && p.monthQuotaResetAt.getTime() <= nowTime) {
           updates.monthQuotaUsed = 0;
           updates.monthCacheInputTokensUsed = 0;
@@ -311,15 +303,6 @@ export async function resetTick(): Promise<ResetTickResult> {
       rollingQuotaUsed: true,
       weekQuotaUsed: true,
       monthQuotaUsed: true,
-      rollingInputTokensUsed: true,
-      rollingCachedReadTokensUsed: true,
-      rollingOutputTokensUsed: true,
-      weekInputTokensUsed: true,
-      weekCachedReadTokensUsed: true,
-      weekOutputTokensUsed: true,
-      monthInputTokensUsed: true,
-      monthCachedReadTokensUsed: true,
-      monthOutputTokensUsed: true,
       rollingQuotaResetAt: true,
       weekQuotaResetAt: true,
       monthQuotaResetAt: true,
@@ -329,37 +312,20 @@ export async function resetTick(): Promise<ResetTickResult> {
     },
   });
 
-  const DIMENSION_ZERO = {
-    rollingQuotaUsed: 0,
-    weekQuotaUsed: 0,
-    monthQuotaUsed: 0,
-    rollingInputTokensUsed: 0,
-    rollingCachedReadTokensUsed: 0,
-    rollingOutputTokensUsed: 0,
-    weekInputTokensUsed: 0,
-    weekCachedReadTokensUsed: 0,
-    weekOutputTokensUsed: 0,
-    monthInputTokensUsed: 0,
-    monthCachedReadTokensUsed: 0,
-    monthOutputTokensUsed: 0,
-  };
-
   await Promise.all(
     users.map((u) => {
       const updates: Record<string, unknown> = {};
       let anyReset = false;
 
-      if (u.rollingQuota != null && u.rollingQuota > 0n) {
+      if (u.rollingQuota != null && u.rollingQuota > 0) {
         if (
           u.rollingQuotaResetAt &&
           u.rollingQuotaResetAt.getTime() <= nowTime
         ) {
-          Object.assign(updates, {
-            rollingQuotaUsed: 0,
-            rollingInputTokensUsed: 0,
-            rollingCachedReadTokensUsed: 0,
-            rollingOutputTokensUsed: 0,
-          });
+          updates.rollingQuotaUsed = 0;
+          updates.rollingInputTokensUsed = 0;
+          updates.rollingCachedReadTokensUsed = 0;
+          updates.rollingOutputTokensUsed = 0;
           updates.rollingQuotaResetAt = computeNextKeyResetAt(
             "rolling",
             now,
@@ -377,14 +343,12 @@ export async function resetTick(): Promise<ResetTickResult> {
         }
       }
 
-      if (u.weekQuota != null && u.weekQuota > 0n) {
+      if (u.weekQuota != null && u.weekQuota > 0) {
         if (u.weekQuotaResetAt && u.weekQuotaResetAt.getTime() <= nowTime) {
-          Object.assign(updates, {
-            weekQuotaUsed: 0,
-            weekInputTokensUsed: 0,
-            weekCachedReadTokensUsed: 0,
-            weekOutputTokensUsed: 0,
-          });
+          updates.weekQuotaUsed = 0;
+          updates.weekInputTokensUsed = 0;
+          updates.weekCachedReadTokensUsed = 0;
+          updates.weekOutputTokensUsed = 0;
           updates.weekQuotaResetAt = computeNextKeyResetAt(
             "week",
             now,
@@ -400,14 +364,12 @@ export async function resetTick(): Promise<ResetTickResult> {
         }
       }
 
-      if (u.monthQuota != null && u.monthQuota > 0n) {
+      if (u.monthQuota != null && u.monthQuota > 0) {
         if (u.monthQuotaResetAt && u.monthQuotaResetAt.getTime() <= nowTime) {
-          Object.assign(updates, {
-            monthQuotaUsed: 0,
-            monthInputTokensUsed: 0,
-            monthCachedReadTokensUsed: 0,
-            monthOutputTokensUsed: 0,
-          });
+          updates.monthQuotaUsed = 0;
+          updates.monthInputTokensUsed = 0;
+          updates.monthCachedReadTokensUsed = 0;
+          updates.monthOutputTokensUsed = 0;
           updates.monthQuotaResetAt = computeNextKeyResetAt(
             "month",
             now,
@@ -451,100 +413,6 @@ export async function resetTick(): Promise<ResetTickResult> {
       quotaMultiplierOutput: u.quotaMultiplierOutput,
     });
   }
-
-  // ── API Key (ApiKey) quota resets ──────────────────────────────
-  // API keys reset at the same cadence as users (1h rolling, weekly Monday, monthly 1st).
-
-  const apiKeys = await prisma.apiKey.findMany({
-    where: {},
-    select: {
-      id: true,
-      createdAt: true,
-      rollingQuotaResetAt: true,
-      weekQuotaResetAt: true,
-      monthQuotaResetAt: true,
-    },
-  });
-
-  await Promise.all(
-    apiKeys.map((k) => {
-      const updates: Record<string, unknown> = {};
-      let anyReset = false;
-
-      // Rolling (1h)
-      if (k.rollingQuotaResetAt && k.rollingQuotaResetAt.getTime() <= nowTime) {
-        Object.assign(updates, {
-          rollingInputTokensUsed: 0,
-          rollingCachedReadTokensUsed: 0,
-          rollingOutputTokensUsed: 0,
-        });
-        updates.rollingQuotaResetAt = computeNextKeyResetAt(
-          "rolling",
-          now,
-          k.createdAt,
-          USER_ROLLING_INTERVAL_HOURS,
-        );
-        anyReset = true;
-      } else if (!k.rollingQuotaResetAt) {
-        updates.rollingQuotaResetAt = computeNextKeyResetAt(
-          "rolling",
-          now,
-          k.createdAt,
-          USER_ROLLING_INTERVAL_HOURS,
-        );
-      }
-
-      // Weekly
-      if (k.weekQuotaResetAt && k.weekQuotaResetAt.getTime() <= nowTime) {
-        Object.assign(updates, {
-          weekInputTokensUsed: 0,
-          weekCachedReadTokensUsed: 0,
-          weekOutputTokensUsed: 0,
-        });
-        updates.weekQuotaResetAt = computeNextKeyResetAt(
-          "week",
-          now,
-          k.createdAt,
-        );
-        anyReset = true;
-      } else if (!k.weekQuotaResetAt) {
-        updates.weekQuotaResetAt = computeNextKeyResetAt(
-          "week",
-          now,
-          k.createdAt,
-        );
-      }
-
-      // Monthly
-      if (k.monthQuotaResetAt && k.monthQuotaResetAt.getTime() <= nowTime) {
-        Object.assign(updates, {
-          monthInputTokensUsed: 0,
-          monthCachedReadTokensUsed: 0,
-          monthOutputTokensUsed: 0,
-        });
-        updates.monthQuotaResetAt = computeNextKeyResetAt(
-          "month",
-          now,
-          k.createdAt,
-        );
-        anyReset = true;
-      } else if (!k.monthQuotaResetAt) {
-        updates.monthQuotaResetAt = computeNextKeyResetAt(
-          "month",
-          now,
-          k.createdAt,
-        );
-      }
-
-      if (anyReset) keysReset++;
-
-      if (Object.keys(updates).length === 0) return Promise.resolve();
-      return prisma.apiKey.update({
-        where: { id: k.id },
-        data: updates,
-      });
-    }),
-  );
 
   return { providersReset, keysReset };
 }

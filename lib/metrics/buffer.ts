@@ -10,6 +10,7 @@ export interface RequestLogRecord {
   apiKeyId: string;
   apiKeyName: string;
   modelId: string;
+  modelName: string;
   providerId: string;
   providerName: string;
   realModelId: string;

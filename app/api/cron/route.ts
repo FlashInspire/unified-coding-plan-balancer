@@ -5,11 +5,12 @@
  * systemd timer, etc.). Each invocation runs the following jobs:
  *
  * 1. flush        — drain in-memory request log buffer → request_log table
- * 2. aggregate    — aggregate the previous minute's logs into usage_minute
- * 3. keyTokenFlush — flush buffered API key token increments to DB
- * 4. reset        — reset expired provider & key quota counters
- * 5. archive      — purge expired log/stat rows (once per day)
- * 6. aggregateReports — generate hour/day/week/month aggregate reports
+ * 2. staleLogs    — mark request_log rows pending > 1h as completed + aborted
+ * 3. aggregate    — aggregate the previous minute's logs into usage_minute
+ * 4. keyTokenFlush — flush buffered API key token increments to DB
+ * 5. reset        — reset expired provider & key quota counters
+ * 6. archive      — purge expired log/stat rows (once per day)
+ * 7. aggregateReports — generate hour/day/week/month aggregate reports
  */
 import { flushOnce } from "@/lib/metrics/flusher";
 import {
@@ -17,8 +18,12 @@ import {
   getLastAggregatedMinute,
   setLastAggregatedMinute,
 } from "@/lib/metrics/aggregator";
-import { aggregateReports, ensureLatestPeriods } from "@/lib/metrics/reportAggregator";
+import {
+  aggregateReports,
+  ensureLatestPeriods,
+} from "@/lib/metrics/reportAggregator";
 import { archiveOnce } from "@/lib/metrics/archiver";
+import { cleanupStaleLogs } from "@/lib/metrics/staleLogCleaner";
 import { resetTick } from "@/lib/quota/reset-scheduler";
 import { userDimensionBuffer } from "@/lib/fee-pipeline/user-buffer";
 import { apiKeyDimensionBuffer } from "@/lib/fee-pipeline/api-key-buffer";
@@ -40,6 +45,18 @@ export async function GET(): Promise<Response> {
   } catch (err) {
     jobs.flush = { error: err instanceof Error ? err.message : "unknown" };
   }
+
+  // 1b. Mark stale (>1h pending) logs as completed + aborted
+  try {
+    const stale = await cleanupStaleLogs(ts);
+    jobs.staleLogs = stale;
+  } catch (err) {
+    jobs.staleLogs = {
+      error: err instanceof Error ? err.message : "unknown",
+    };
+  }
+
+  //
 
   // 2. Aggregate previous minute
   try {

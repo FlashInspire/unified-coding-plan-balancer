@@ -31,15 +31,15 @@ const MODEL_FORM_FIELDS = [
   { type: "section" as const, legend: "Model Configuration" },
   {
     name: "contextLength",
-    label: "Context Length",
+    label: "Context Length (K)",
     type: "number" as const,
-    defaultValue: 131072,
+    defaultValue: 128,
   },
   {
     name: "maxTokens",
-    label: "Max Tokens",
+    label: "Max Tokens (K)",
     type: "number" as const,
-    defaultValue: 32768,
+    defaultValue: 32,
   },
   { name: "temperature", label: "Temperature", type: "number" as const },
   { name: "topK", label: "Top K", type: "number" as const },
@@ -108,11 +108,12 @@ interface ProviderTableRow {
 /* ── Helper: ModelRow → initial values for edit form ──────────────────── */
 
 function modelToInitialValues(m: ModelRow): Record<string, unknown> {
+  // Tokens are stored in raw count; the form displays them in K (÷1024).
   return {
     id: m.id,
     displayName: m.displayName,
-    contextLength: m.contextLength,
-    maxTokens: m.maxTokens,
+    contextLength: m.contextLength != null ? m.contextLength / 1024 : "",
+    maxTokens: m.maxTokens != null ? m.maxTokens / 1024 : "",
     temperature: m.temperature ?? "",
     topK: m.topK ?? "",
     topP: m.topP ?? "",
@@ -125,6 +126,23 @@ function modelToInitialValues(m: ModelRow): Record<string, unknown> {
     presencePenalty: m.presencePenalty ?? "",
     repetitionPenalty: m.repetitionPenalty ?? "",
   };
+}
+
+/**
+ * Convert K-unit form values back to raw token counts before sending to the API.
+ * Mutates a shallow copy so the caller's object is untouched.
+ */
+function expandKFields(
+  values: Record<string, unknown>,
+): Record<string, unknown> {
+  const out = { ...values };
+  for (const key of ["contextLength", "maxTokens"] as const) {
+    const v = out[key];
+    if (typeof v === "number" && Number.isFinite(v)) {
+      out[key] = Math.round(v * 1024);
+    }
+  }
+  return out;
 }
 
 /* ── Component ────────────────────────────────────────────────────────── */
@@ -385,7 +403,7 @@ export default function ModelsPage() {
             onSubmit={async (v) => {
               await apiFetch("/api/admin/models", {
                 method: "POST",
-                body: JSON.stringify({ ...v, enabled: true }),
+                body: JSON.stringify({ ...expandKFields(v), enabled: true }),
               });
               await load();
             }}
@@ -544,7 +562,8 @@ export default function ModelsPage() {
           if (modelDialogInitial) {
             // Edit: omit id from the patch payload
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const { id: _id, ...patch } = v;
+            const { id: _id, ...rest } = v;
+            const patch = expandKFields(rest);
             await apiFetch(`/api/admin/models/${selectedId}`, {
               method: "PATCH",
               body: JSON.stringify(patch),
@@ -552,7 +571,7 @@ export default function ModelsPage() {
           } else {
             await apiFetch("/api/admin/models", {
               method: "POST",
-              body: JSON.stringify({ ...v, enabled: true }),
+              body: JSON.stringify({ ...expandKFields(v), enabled: true }),
             });
           }
           await load();

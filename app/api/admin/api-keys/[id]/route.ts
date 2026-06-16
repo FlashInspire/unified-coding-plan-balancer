@@ -6,6 +6,7 @@ import { apiKeyRepo } from "@/lib/repositories/apiKeyRepo";
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
   enabled: z.boolean().optional(),
+  ownerId: z.string().min(1).optional(),
 });
 
 /** Verify the key belongs to the user (non-admin) or return true (admin). */
@@ -36,6 +37,10 @@ export async function PATCH(
 
   try {
     const data = patchSchema.parse(await req.json());
+    // Only admins can reassign ownership.
+    if (data.ownerId !== undefined && !isAdmin) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
     const row = await apiKeyRepo.update(id, data);
     return Response.json({ data: row });
   } catch (e) {

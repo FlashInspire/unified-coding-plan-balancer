@@ -224,21 +224,21 @@ export function ProviderConfigCard({
             )}
             <div>
               <label className="text-[10px] font-medium text-muted-foreground block mb-0.5">
-                Max Tokens Override
+                Max Tokens Override (K)
               </label>
               <Input
                 type="number"
                 defaultValue={
                   pm.maxTokensOverride != null
-                    ? String(pm.maxTokensOverride)
+                    ? String(pm.maxTokensOverride / 1024)
                     : ""
                 }
-                placeholder={`${model.maxTokens}`}
+                placeholder={`${model.maxTokens / 1024}`}
                 onChange={(e) =>
                   setEditValues((v) => ({
                     ...v,
                     maxTokensOverride: e.target.value
-                      ? Number(e.target.value)
+                      ? Math.round(Number(e.target.value) * 1024)
                       : null,
                   }))
                 }

@@ -28,24 +28,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { signOut } from "next-auth/react";
-import { LogOut, Lock, Sun, Moon, Monitor, Globe } from "lucide-react";
+import {
+  useDateTimeFormat,
+  DATE_FORMAT_OPTIONS,
+} from "../_components/datetime-format-provider";
+import { LogOut, Lock, Sun, Moon, Monitor, Globe, Clock } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 interface SettingEntry {
   value: string;
   source: "db" | "env";
 }
-
-const SETTING_LABELS: Record<string, string> = {
-  LOAD_BALANCE_MODE: "Load Balance Mode",
-  LOG_RETENTION_DAYS: "Log Retention (days)",
-  STAT_RETENTION_MONTHS: "Stat Retention (months)",
-  QUOTA_REFRESH_INTERVAL_MS: "Quota Refresh Interval (ms)",
-  QUOTA_REFRESH_CONCURRENCY: "Quota Refresh Concurrency",
-  QUOTA_EXHAUST_THRESHOLD: "Quota Exhaust Threshold (%)",
-  METRICS_FLUSH_INTERVAL_MS: "Metrics Flush Interval (ms)",
-  METRICS_FLUSH_BATCH_SIZE: "Metrics Flush Batch Size",
-  STICKY_TTL_MS: "Sticky Routing TTL (ms)",
-};
 
 /** Settings that render as a Select dropdown (not a number input). */
 const SETTING_SELECT_OPTIONS: Record<
@@ -65,7 +58,11 @@ const SETTING_SELECT_OPTIONS: Record<
   ],
 };
 
-/** Explicit render order — keys not listed here appear at the end in label-map order. */
+/**
+ * Explicit render order. Each key has corresponding i18n entries:
+ *   settings.system.fields.<KEY>.label
+ *   settings.system.fields.<KEY>.description
+ */
 const SETTING_RENDER_ORDER = [
   "LOAD_BALANCE_MODE",
   "LOG_RETENTION_DAYS",
@@ -136,6 +133,8 @@ function UserProfileCard() {
     quotaMultiplierInput: number;
     quotaMultiplierCachedRead: number;
     quotaMultiplierOutput: number;
+    dateTimeFormat: string;
+    use24Hour: boolean;
   } | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [pwOpen, setPwOpen] = useState(false);
@@ -177,6 +176,8 @@ function UserProfileCard() {
             quotaMultiplierInput: number;
             quotaMultiplierCachedRead: number;
             quotaMultiplierOutput: number;
+            dateTimeFormat: string;
+            use24Hour: boolean;
           };
         }>("/api/admin/me");
         setProfile(r.data);
@@ -186,9 +187,11 @@ function UserProfileCard() {
     });
   }, []);
 
+  const { formatDate } = useDateTimeFormat();
+
   async function handlePreferenceChange(
-    key: "language" | "theme",
-    value: string,
+    key: "language" | "theme" | "dateTimeFormat" | "use24Hour",
+    value: string | boolean,
   ) {
     try {
       await apiFetch("/api/admin/preferences", {
@@ -197,11 +200,11 @@ function UserProfileCard() {
       });
       // Apply immediately.
       if (key === "language") {
-        setLocale(value);
-        localStorage.setItem("ucpb:lang", value);
-      } else {
+        setLocale(value as string);
+        localStorage.setItem("ucpb:lang", value as string);
+      } else if (key === "theme") {
         setTheme(value as "light" | "dark" | "system");
-        localStorage.setItem("ucpb:theme", value);
+        localStorage.setItem("ucpb:theme", value as string);
       }
       // Update session so JWT carries the new preference.
       await updateSession({ [key]: value });
@@ -362,9 +365,7 @@ function UserProfileCard() {
                 {t("settings.profile.lastLogin")}
               </span>
               <span className="text-xs">
-                {profile.lastSignInAt
-                  ? new Date(profile.lastSignInAt).toLocaleString()
-                  : "—"}
+                {profile.lastSignInAt ? formatDate(profile.lastSignInAt) : "—"}
               </span>
             </div>
             <Separator />
@@ -473,6 +474,48 @@ function UserProfileCard() {
                 {t(`settings.profile.theme.${t_}`)}
               </button>
             ))}
+          </div>
+        </div>
+        <Separator />
+
+        {/* DateTime Format preference */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5" />
+              {t("settings.profile.dateTimeFormat")}
+            </span>
+            <Select
+              value={profile?.dateTimeFormat ?? ""}
+              onValueChange={(v) => handlePreferenceChange("dateTimeFormat", v)}
+            >
+              <SelectTrigger className="h-7 w-[200px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DATE_FORMAT_OPTIONS.map((opt) => (
+                  <SelectItem
+                    key={opt.value}
+                    value={opt.value}
+                    className="text-xs"
+                  >
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">
+              {t("settings.profile.use24Hour")}
+            </span>
+            <Switch
+              checked={profile?.use24Hour ?? true}
+              onCheckedChange={(v: boolean) =>
+                handlePreferenceChange("use24Hour", v)
+              }
+              className="scale-75"
+            />
           </div>
         </div>
         <Separator />
@@ -612,18 +655,24 @@ function SystemSettingsCard() {
       setEdits({});
       setSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save settings");
+      setError(
+        err instanceof Error ? err.message : t("settings.system.saveFailed"),
+      );
     } finally {
       setSaving(false);
     }
   }
 
   if (loading)
-    return <div className="text-muted-foreground text-sm mt-3">Loading…</div>;
+    return (
+      <div className="text-muted-foreground text-sm mt-3">
+        {t("settings.system.loading")}
+      </div>
+    );
   if (!settings)
     return (
       <div className="text-muted-foreground text-sm mt-3">
-        Failed to load settings.
+        {t("settings.system.loadFailed")}
       </div>
     );
 
@@ -632,68 +681,69 @@ function SystemSettingsCard() {
   return (
     <Card className="mt-3">
       <CardHeader>
-        <CardTitle className="text-sm">System Settings</CardTitle>
+        <CardTitle className="text-sm">{t("settings.system.title")}</CardTitle>
         <p className="text-xs text-muted-foreground">
-          Values sourced from{" "}
+          {t("settings.system.intro.before")}
           <Badge variant="outline" className="text-[10px]">
             env
-          </Badge>{" "}
-          are defaults from environment variables. Overrides stored in{" "}
+          </Badge>
+          {t("settings.system.intro.between")}
           <Badge variant="default" className="text-[10px]">
             db
-          </Badge>{" "}
-          take precedence.
+          </Badge>
+          {t("settings.system.intro.after")}
         </p>
       </CardHeader>
-      <CardContent className="space-y-3">
-        {SETTING_RENDER_ORDER.filter((k) => k in SETTING_LABELS).map((key) => {
-          const label = SETTING_LABELS[key];
+      <CardContent className="space-y-4">
+        {SETTING_RENDER_ORDER.map((key) => {
           const entry = settings[key];
           const edited = edits[key];
           const selectOptions = SETTING_SELECT_OPTIONS[key];
+          const label = t(`settings.system.fields.${key}.label`);
+          const description = t(`settings.system.fields.${key}.description`);
           return (
-            <div
-              key={key}
-              className="grid grid-cols-[200px_1fr_48px] items-center gap-2"
-            >
-              <label
-                className="text-xs font-medium text-muted-foreground truncate"
-                title={key}
-              >
-                {key === "LOAD_BALANCE_MODE"
-                  ? t("settings.system.loadBalanceMode")
-                  : label}
-              </label>
-              {selectOptions ? (
-                <Select
-                  value={edited ?? entry?.value ?? ""}
-                  onValueChange={(v) => handleChange(key, v)}
+            <div key={key} className="space-y-1">
+              <div className="grid grid-cols-[200px_1fr_48px] items-center gap-2">
+                <label
+                  className="text-xs font-medium text-muted-foreground truncate"
+                  title={key}
                 >
-                  <SelectTrigger className="h-8 text-xs w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {selectOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {t(opt.labelKey)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Input
-                  type="number"
-                  value={edited ?? entry?.value ?? ""}
-                  onChange={(e) => handleChange(key, e.target.value)}
-                  className="h-8 text-xs"
-                />
-              )}
-              <Badge
-                variant={entry?.source === "db" ? "default" : "outline"}
-                className="text-[10px] justify-center"
-              >
-                {entry?.source ?? "—"}
-              </Badge>
+                  {label}
+                </label>
+                {selectOptions ? (
+                  <Select
+                    value={edited ?? entry?.value ?? ""}
+                    onValueChange={(v) => handleChange(key, v)}
+                  >
+                    <SelectTrigger className="h-8 text-xs w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {selectOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {t(opt.labelKey)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    type="number"
+                    value={edited ?? entry?.value ?? ""}
+                    onChange={(e) => handleChange(key, e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                )}
+                <Badge
+                  variant={entry?.source === "db" ? "default" : "outline"}
+                  className="text-[10px] justify-center"
+                >
+                  {entry?.source ?? "—"}
+                </Badge>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-snug pl-[200px] -mt-0.5">
+                {description}
+              </p>
             </div>
           );
         })}
@@ -704,11 +754,11 @@ function SystemSettingsCard() {
         )}
         {success && (
           <div className="text-sm text-green-700 rounded-md bg-green-50 border border-green-200 px-3 py-2">
-            Settings saved.
+            {t("settings.system.savedNotice")}
           </div>
         )}
         <Button onClick={handleSave} disabled={!hasEdits || saving}>
-          {saving ? "Saving…" : "Save Settings"}
+          {saving ? t("settings.system.saving") : t("settings.system.saveAll")}
         </Button>
       </CardContent>
     </Card>

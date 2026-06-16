@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useSession } from "next-auth/react";
 import { DataTable } from "../_components/data-table";
 import { FormDialog } from "../_components/form-dialog";
 import { apiFetch } from "../_components/api";
@@ -8,16 +9,17 @@ import { useT } from "../_components/i18n-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Copy, Pencil, Power, RefreshCw } from "lucide-react";
+import { Copy, Pencil, Power } from "lucide-react";
 import type { ApiKeyRow } from "@/lib/types";
 import type { RecentLogRow } from "@/lib/metrics/queryRouter";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+
+type SessionUser = { role?: string };
+
+interface OwnerOption {
+  id: string;
+  username: string;
+  displayName: string | null;
+}
 
 interface CreatedApiKey {
   id: string;
@@ -27,12 +29,13 @@ interface CreatedApiKey {
 
 export default function ApiKeysPage() {
   const t = useT();
+  const { data: session } = useSession();
+  const isAdmin = (session?.user as SessionUser)?.role === "admin";
   const [data, setData] = useState<ApiKeyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [created, setCreated] = useState<CreatedApiKey | null>(null);
   const [editRow, setEditRow] = useState<ApiKeyRow | null>(null);
-  const [regenerateRow, setRegenerateRow] = useState<ApiKeyRow | null>(null);
-  const [regenerating, setRegenerating] = useState(false);
+  const [owners, setOwners] = useState<OwnerOption[]>([]);
 
   async function load() {
     try {
@@ -45,6 +48,25 @@ export default function ApiKeysPage() {
   useEffect(() => {
     void load();
   }, []);
+
+  // Admins can reassign ownership: load user list lazily.
+  useEffect(() => {
+    if (!isAdmin) return;
+    queueMicrotask(async () => {
+      try {
+        const r = await apiFetch<{ data: OwnerOption[] }>("/api/admin/users");
+        setOwners(
+          r.data.map((u) => ({
+            id: u.id,
+            username: u.username,
+            displayName: u.displayName,
+          })),
+        );
+      } catch {
+        // non-critical: edit modal will fall back to a name-only edit
+      }
+    });
+  }, [isAdmin]);
 
   return (
     <div className="space-y-4">
@@ -75,14 +97,11 @@ export default function ApiKeysPage() {
         />
       </div>
 
-      {/* New / regenerated key banner */}
+      {/* Created key banner */}
       {created && (
         <div className="rounded-lg border-2 border-yellow-500 bg-yellow-50 p-4 dark:bg-yellow-950">
           <div className="font-semibold mb-2 text-sm">
-            {t("apiKeys.created.title")}
-          </div>
-          <div className="text-xs mb-3 text-muted-foreground">
-            {t("apiKeys.created.description")}
+            Copy this key now — it will not be shown again:
           </div>
           <div className="flex items-center gap-2">
             <code className="flex-1 bg-black text-green-300 p-3 rounded text-xs break-all">
@@ -102,66 +121,37 @@ export default function ApiKeysPage() {
             onClick={() => setCreated(null)}
             className="mt-3 text-xs underline text-muted-foreground"
           >
-            {t("apiKeys.created.close")}
+            Dismiss
           </button>
         </div>
       )}
 
-      {/* Regenerate confirmation modal */}
-      <Dialog
-        open={regenerateRow != null}
-        onOpenChange={(o) => {
-          if (!o) setRegenerateRow(null);
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("apiKeys.regenerate.title")}</DialogTitle>
-          </DialogHeader>
-          <div className="text-sm text-muted-foreground">
-            {t("apiKeys.regenerate.warning")}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRegenerateRow(null)}>
-              {t("dialog.cancel")}
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={regenerating}
-              onClick={async () => {
-                if (!regenerateRow) return;
-                setRegenerating(true);
-                try {
-                  const r = await apiFetch<{ data: CreatedApiKey }>(
-                    `/api/admin/api-keys/${regenerateRow.id}/regenerate`,
-                    { method: "POST" },
-                  );
-                  setCreated(r.data);
-                  setRegenerateRow(null);
-                  await load();
-                } catch (e) {
-                  alert(e instanceof Error ? e.message : "Failed");
-                } finally {
-                  setRegenerating(false);
-                }
-              }}
-            >
-              {regenerating ? "..." : t("apiKeys.regenerate.confirm")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Edit modal */}
       <FormDialog
-        title={`Edit Key: ${editRow?.name ?? ""}`}
+        title={`${t("apiKeys.dialog.editTitle")}: ${editRow?.name ?? ""}`}
         fields={[
           {
             name: "name",
-            label: "Name",
+            label: t("apiKeys.form.name"),
             type: "text" as const,
             required: true,
           },
+          ...(isAdmin && owners.length > 0
+            ? [
+                {
+                  name: "ownerId",
+                  label: t("apiKeys.form.owner"),
+                  type: "select" as const,
+                  required: true,
+                  options: owners.map((u) => ({
+                    value: u.id,
+                    label: u.displayName
+                      ? `${u.displayName} (@${u.username})`
+                      : u.username,
+                  })),
+                },
+              ]
+            : []),
         ]}
         open={editRow != null}
         onOpenChange={(o) => {
@@ -171,10 +161,11 @@ export default function ApiKeysPage() {
           editRow
             ? {
                 name: editRow.name,
+                ownerId: editRow.ownerId ?? "",
               }
             : undefined
         }
-        submitLabel="Save"
+        submitLabel={t("dialog.save")}
         onSubmit={async (v) => {
           await apiFetch(`/api/admin/api-keys/${editRow!.id}`, {
             method: "PATCH",
@@ -265,16 +256,6 @@ export default function ApiKeysPage() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setRegenerateRow(k);
-                  }}
-                  className="inline-flex items-center justify-center h-7 w-7 rounded hover:bg-accent"
-                  title={t("apiKeys.action.regenerate")}
-                >
-                  <RefreshCw className="h-3 w-3" />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
                     setEditRow(k);
                   }}
                   className="inline-flex items-center justify-center h-7 w-7 rounded hover:bg-accent"
@@ -332,7 +313,7 @@ function KeyCallLogs({ apiKeyId }: { apiKeyId: string }) {
     setLoading(true);
     try {
       const r = await apiFetch<{ data: RecentLogRow[]; total: number }>(
-        `/api/admin/live?limit=50&apiKeyId=${apiKeyId}`,
+        `/api/admin/logs?limit=50&apiKeyId=${apiKeyId}`,
       );
       setLogs(r.data);
     } catch {

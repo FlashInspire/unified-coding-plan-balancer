@@ -7,6 +7,8 @@ export const dynamic = "force-dynamic";
 const patchSchema = z.object({
   language: z.enum(["en", "zh"]).optional(),
   theme: z.enum(["light", "dark", "system"]).optional(),
+  dateTimeFormat: z.string().optional(),
+  use24Hour: z.boolean().optional(),
 });
 
 export async function GET(): Promise<Response> {

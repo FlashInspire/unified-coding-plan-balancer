@@ -14,9 +14,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useT } from "../_components/i18n-provider";
 import { Pencil, Power, RotateCcw } from "lucide-react";
 import type { ProviderRow } from "@/lib/types";
-import { useT } from "../_components/i18n-provider";
 
 // ---------------------------------------------------------------------------
 // Form field definitions
@@ -188,28 +188,6 @@ function formatQuotaNum(n: number): string {
     return `${v % 1 === 0 ? v : v.toFixed(1).replace(/\.0$/, "")}K`;
   }
   return n % 1 === 0 ? String(n) : n.toFixed(1);
-}
-
-function formatDuration(ms: number, t: (key: string) => string): string {
-  if (ms <= 0) return t("providers.resetSoon");
-  const h = Math.floor(ms / 3_600_000);
-  const m = Math.floor((ms % 3_600_000) / 60_000);
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m`;
-  return "<1m";
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function formatNextReset(
-  resetAt: Date | null,
-  t: (key: string) => string,
-): string {
-  if (!resetAt) return "—";
-  const diff = resetAt.getTime() - Date.now();
-  if (diff < 24 * 60 * 60_000) {
-    return formatDuration(diff, t);
-  }
-  return resetAt.toLocaleString();
 }
 
 function quotaPct(used: number, quota: number | null): number | null {

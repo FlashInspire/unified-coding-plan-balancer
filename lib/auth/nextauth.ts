@@ -48,6 +48,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           mustChangePassword: user.mustChangePassword,
           language: prefs.language,
           theme: prefs.theme,
+          dateTimeFormat: prefs.dateTimeFormat,
+          use24Hour: prefs.use24Hour,
         };
       },
     }),

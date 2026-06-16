@@ -32,6 +32,8 @@ export async function GET(): Promise<Response> {
       createdAt: user.createdAt.toISOString(),
       language: prefs.language,
       theme: prefs.theme,
+      dateTimeFormat: prefs.dateTimeFormat,
+      use24Hour: prefs.use24Hour,
       // User-level quota (read-only for non-admins)
       rollingQuota:
         user.rollingQuota != null ? Number(user.rollingQuota) : null,

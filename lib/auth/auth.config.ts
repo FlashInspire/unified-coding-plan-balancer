@@ -60,6 +60,8 @@ export const authConfig: NextAuthConfig = {
         // Carry preferences from the user object (set by Credentials provider).
         token.language = (user as { language?: string }).language ?? "en";
         token.theme = (user as { theme?: string }).theme ?? "system";
+        token.dateTimeFormat = (user as { dateTimeFormat?: string }).dateTimeFormat ?? "YYYY-MM-DD HH:mm:ss";
+        token.use24Hour = (user as { use24Hour?: boolean }).use24Hour ?? true;
         // Profile fields.
         token.role = (user as { role?: string }).role ?? "user";
         token.email = (user as { email?: string | null }).email ?? null;
@@ -73,6 +75,8 @@ export const authConfig: NextAuthConfig = {
           mustChangePassword?: boolean;
           language?: string;
           theme?: string;
+          dateTimeFormat?: string;
+          use24Hour?: boolean;
           email?: string | null;
           displayName?: string | null;
           avatarUrl?: string | null;
@@ -85,6 +89,12 @@ export const authConfig: NextAuthConfig = {
         }
         if (typeof s.theme === "string") {
           token.theme = s.theme;
+        }
+        if (typeof s.dateTimeFormat === "string") {
+          token.dateTimeFormat = s.dateTimeFormat;
+        }
+        if (typeof s.use24Hour === "boolean") {
+          token.use24Hour = s.use24Hour;
         }
         if (s.email !== undefined) token.email = s.email;
         if (s.displayName !== undefined) token.displayName = s.displayName;
@@ -100,6 +110,8 @@ export const authConfig: NextAuthConfig = {
         u.mustChangePassword = token.mustChangePassword as boolean;
         u.language = (token.language as string) ?? "en";
         u.theme = (token.theme as string) ?? "system";
+        u.dateTimeFormat = (token.dateTimeFormat as string) ?? "YYYY-MM-DD HH:mm:ss";
+        u.use24Hour = (token.use24Hour as boolean) ?? true;
         u.role = (token.role as string) ?? "user";
         u.email = (token.email as string | null) ?? null;
         u.displayName = (token.displayName as string | null) ?? null;

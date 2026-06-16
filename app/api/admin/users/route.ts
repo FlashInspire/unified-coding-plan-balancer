@@ -17,7 +17,15 @@ export async function GET(): Promise<Response> {
   if (denied) return denied;
 
   const users = await adminUserRepo.findAll();
-  return Response.json({ data: users });
+  // Prisma returns BigInt for `rollingQuota`/`weekQuota`/`monthQuota`, which
+  // `Response.json` (JSON.stringify) cannot serialize. Convert to Number.
+  const data = users.map((u) => ({
+    ...u,
+    rollingQuota: u.rollingQuota == null ? null : Number(u.rollingQuota),
+    weekQuota: u.weekQuota == null ? null : Number(u.weekQuota),
+    monthQuota: u.monthQuota == null ? null : Number(u.monthQuota),
+  }));
+  return Response.json({ data });
 }
 
 export async function POST(req: NextRequest): Promise<Response> {

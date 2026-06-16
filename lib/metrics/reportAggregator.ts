@@ -93,6 +93,9 @@ interface GroupedRow {
   api_key_id: string;
   provider_id: string;
   model_id: string;
+  provider_name: string | null;
+  model_name: string | null;
+  api_key_name: string | null;
   requests: number;
   requests_ok: number;
   requests_err: number;
@@ -114,9 +117,15 @@ async function aggregateRange(
   endMs: number,
   granularity: Granularity,
 ): Promise<number> {
-  // Use $queryRaw for efficient grouped aggregation
+  // Use $queryRaw for efficient grouped aggregation.
+  // Names are taken from request_log (MAX = arbitrary representative); empty
+  // strings are normalised to NULL via NULLIF so the display layer can fall
+  // back to the underlying id.
   const rows = await prisma.$queryRaw<GroupedRow[]>`
     SELECT provider_id, model_id, api_key_id,
+           NULLIF(MAX(provider_name), '') as provider_name,
+           NULLIF(MAX(model_name), '') as model_name,
+           NULLIF(MAX(api_key_name), '') as api_key_name,
            COUNT(*)::int AS requests,
            SUM(CASE WHEN status BETWEEN 200 AND 299 THEN 1 ELSE 0 END)::int AS requests_ok,
            SUM(CASE WHEN status NOT BETWEEN 200 AND 299 THEN 1 ELSE 0 END)::int AS requests_err,
@@ -133,21 +142,79 @@ async function aggregateRange(
 
   if (rows.length === 0) return 0;
 
-  // Upsert each grouped row into aggregate_report
+  // Resolve missing names from the live Provider / Model / ApiKey tables so
+  // first-time aggregations of legacy logs still get a sensible label.
+  const missingProviderIds = [
+    ...new Set(rows.filter((r) => !r.provider_name).map((r) => r.provider_id)),
+  ];
+  const missingModelIds = [
+    ...new Set(rows.filter((r) => !r.model_name).map((r) => r.model_id)),
+  ];
+  const missingApiKeyIds = [
+    ...new Set(rows.filter((r) => !r.api_key_name).map((r) => r.api_key_id)),
+  ];
+  const [providerLookup, modelLookup, apiKeyLookup] = await Promise.all([
+    missingProviderIds.length > 0
+      ? prisma.provider.findMany({
+          where: { id: { in: missingProviderIds } },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve([]),
+    missingModelIds.length > 0
+      ? prisma.model.findMany({
+          where: { id: { in: missingModelIds } },
+          select: { id: true, displayName: true },
+        })
+      : Promise.resolve([]),
+    missingApiKeyIds.length > 0
+      ? prisma.apiKey.findMany({
+          where: { id: { in: missingApiKeyIds } },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const providerNameMap = new Map(providerLookup.map((p) => [p.id, p.name]));
+  const modelNameMap = new Map(modelLookup.map((m) => [m.id, m.displayName]));
+  const apiKeyNameMap = new Map(apiKeyLookup.map((k) => [k.id, k.name]));
+
+  const resolveName = (
+    name: string | null,
+    fallback: string | undefined,
+  ): string | null => {
+    if (name && name.trim() !== "") return name;
+    if (fallback && fallback.trim() !== "") return fallback;
+    return null;
+  };
+
+  // Upsert each grouped row into aggregate_report.
+  // ON CONFLICT we use COALESCE(EXCLUDED.<name>, aggregate_report.<name>) so a
+  // null incoming name does NOT clobber a previously-stored name.
   for (const r of rows) {
+    const providerName = resolveName(
+      r.provider_name,
+      providerNameMap.get(r.provider_id),
+    );
+    const modelName = resolveName(r.model_name, modelNameMap.get(r.model_id));
+    const apiKeyName = resolveName(
+      r.api_key_name,
+      apiKeyNameMap.get(r.api_key_id),
+    );
     await prisma.$executeRaw`
       INSERT INTO aggregate_report
-        (granularity, period_start, provider_id, model_id, api_key_id,
+        (granularity, period_start, provider_id, provider_name, model_id, model_name, api_key_id, api_key_name,
          requests, requests_ok, requests_err,
          input_tokens, cached_input_tokens, output_tokens,
          ttft_ms_sum, ttft_ms_count, tps_out_sum, tps_out_count)
       VALUES
-        (${granularity}, ${BigInt(startMs)}, ${r.provider_id}, ${r.model_id}, ${r.api_key_id},
+        (${granularity}, ${BigInt(startMs)}, ${r.provider_id}, ${providerName}, ${r.model_id}, ${modelName}, ${r.api_key_id}, ${apiKeyName},
          ${r.requests}, ${r.requests_ok}, ${r.requests_err},
          ${r.input_tokens}, ${r.cached_input_tokens}, ${r.output_tokens},
          ${Number(r.ttft_ms_sum)}, ${r.ttft_ms_count}, ${r.tps_out_sum}, ${r.tps_out_count})
       ON CONFLICT (granularity, period_start, provider_id, model_id, api_key_id)
       DO UPDATE SET
+        provider_name = COALESCE(EXCLUDED.provider_name, aggregate_report.provider_name),
+        model_name = COALESCE(EXCLUDED.model_name, aggregate_report.model_name),
+        api_key_name = COALESCE(EXCLUDED.api_key_name, aggregate_report.api_key_name),
         requests = aggregate_report.requests + EXCLUDED.requests,
         requests_ok = aggregate_report.requests_ok + EXCLUDED.requests_ok,
         requests_err = aggregate_report.requests_err + EXCLUDED.requests_err,

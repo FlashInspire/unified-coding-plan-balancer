@@ -4,21 +4,15 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { DataTable } from "../_components/data-table";
 import { LogFiltersBar, type LogFilters } from "./_components/log-filters";
 import type { RecentLogRow } from "@/lib/metrics/queryRouter";
+import type { ModelRow } from "@/lib/types";
+import { apiFetch } from "../_components/api";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, XCircle, Radio, ChevronDown } from "lucide-react";
+import { Loader2, XCircle, Radio } from "lucide-react";
 import { useT } from "../_components/i18n-provider";
 import { cn } from "@/lib/utils";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
+import { RankBarChart } from "../_components/rank-bar-chart";
+import { useFormatDate } from "../_components/datetime-format-provider";
 
 // ---------------------------------------------------------------------------
 // Formatters
@@ -34,119 +28,13 @@ function fmtTokens(v: number): string {
 // Live Charts
 // ---------------------------------------------------------------------------
 
-const CHART_COLORS = [
-  "hsl(var(--primary))",
-  "#6366f1",
-  "#8b5cf6",
-  "#a855f7",
-  "#d946ef",
-  "#ec4899",
-  "#f43f5e",
-  "#f97316",
-  "#eab308",
-  "#22c55e",
-];
-
-const TOKEN_COLORS = {
-  input: "hsl(221, 83%, 53%)",
-  cached: "hsl(142, 71%, 38%)",
-  output: "hsl(30, 91%, 55%)",
-};
-
-function RankBarChart({
-  title,
-  data,
+function LiveCharts({
+  logs,
+  modelNameMap,
 }: {
-  title: string;
-  data: {
-    name: string;
-    calls: number;
-    input_tokens: number;
-    cached_input_tokens: number;
-    output_tokens: number;
-  }[];
+  logs: RecentLogRow[];
+  modelNameMap: Map<string, string>;
 }) {
-  if (data.length === 0) return null;
-  return (
-    <Card>
-      <CardHeader className="pb-1 pt-3 px-4">
-        <CardTitle className="text-xs font-medium text-muted-foreground">
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="px-2 pb-3">
-        <ResponsiveContainer width="100%" height={200}>
-          <BarChart
-            data={data}
-            margin={{ top: 0, right: 24, bottom: 0, left: 0 }}
-          >
-            <XAxis
-              dataKey="name"
-              tick={{ fontSize: 10 }}
-              interval={0}
-              angle={-30}
-              textAnchor="end"
-              height={60}
-            />
-            <YAxis
-              yAxisId="left"
-              tick={{ fontSize: 10 }}
-              allowDecimals={false}
-            />
-            <YAxis
-              yAxisId="right"
-              orientation="right"
-              tick={{ fontSize: 10 }}
-              tickFormatter={fmtTokens}
-            />
-            <Tooltip
-              formatter={(value, name) => {
-                if (name === "Calls") return [`${value} calls`, "Calls"];
-                return [fmtTokens(Number(value)), name];
-              }}
-              labelFormatter={(l) => String(l)}
-            />
-            <Bar
-              yAxisId="left"
-              dataKey="calls"
-              name="Calls"
-              fill={CHART_COLORS[0]}
-              barSize={12}
-              radius={[4, 4, 0, 0]}
-            />
-            <Bar
-              yAxisId="right"
-              dataKey="input_tokens"
-              name="Input"
-              stackId="tokens"
-              fill={TOKEN_COLORS.input}
-              barSize={12}
-            />
-            <Bar
-              yAxisId="right"
-              dataKey="cached_input_tokens"
-              name="Cached Input"
-              stackId="tokens"
-              fill={TOKEN_COLORS.cached}
-              barSize={12}
-            />
-            <Bar
-              yAxisId="right"
-              dataKey="output_tokens"
-              name="Output"
-              stackId="tokens"
-              fill={TOKEN_COLORS.output}
-              barSize={12}
-              radius={[4, 4, 0, 0]}
-            />
-          </BarChart>
-        </ResponsiveContainer>
-      </CardContent>
-    </Card>
-  );
-}
-
-function LiveCharts({ logs }: { logs: RecentLogRow[] }) {
   const keyData = useMemo(() => {
     const m = new Map<
       string,
@@ -176,9 +64,7 @@ function LiveCharts({ logs }: { logs: RecentLogRow[] }) {
         });
       }
     }
-    return [...m.values()]
-      .sort((a, b) => b.calls - a.calls)
-      .slice(0, 10);
+    return [...m.values()].sort((a, b) => b.calls - a.calls).slice(0, 10);
   }, [logs]);
 
   const modelData = useMemo(() => {
@@ -194,6 +80,7 @@ function LiveCharts({ logs }: { logs: RecentLogRow[] }) {
     >();
     for (const r of logs) {
       const k = String(r.model_id ?? "—");
+      const display = modelNameMap.get(k) ?? k;
       const existing = m.get(k);
       if (existing) {
         existing.calls++;
@@ -202,7 +89,7 @@ function LiveCharts({ logs }: { logs: RecentLogRow[] }) {
         existing.output_tokens += r.output_tokens ?? 0;
       } else {
         m.set(k, {
-          name: k,
+          name: display,
           calls: 1,
           input_tokens: r.input_tokens ?? 0,
           cached_input_tokens: r.cached_input_tokens ?? 0,
@@ -210,10 +97,8 @@ function LiveCharts({ logs }: { logs: RecentLogRow[] }) {
         });
       }
     }
-    return [...m.values()]
-      .sort((a, b) => b.calls - a.calls)
-      .slice(0, 10);
-  }, [logs]);
+    return [...m.values()].sort((a, b) => b.calls - a.calls).slice(0, 10);
+  }, [logs, modelNameMap]);
 
   const providerData = useMemo(() => {
     const m = new Map<
@@ -244,9 +129,7 @@ function LiveCharts({ logs }: { logs: RecentLogRow[] }) {
         });
       }
     }
-    return [...m.values()]
-      .sort((a, b) => b.calls - a.calls)
-      .slice(0, 10);
+    return [...m.values()].sort((a, b) => b.calls - a.calls).slice(0, 10);
   }, [logs]);
 
   if (logs.length === 0) return null;
@@ -260,7 +143,7 @@ function LiveCharts({ logs }: { logs: RecentLogRow[] }) {
   );
 }
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 200;
 const RECONNECT_BASE_MS = 3_000;
 const RECONNECT_MAX_MS = 30_000;
 
@@ -303,6 +186,7 @@ const fmtDuration = (ms: number) => {
 
 export default function LivePage() {
   const t = useT();
+  const formatDate = useFormatDate();
 
   // ── Data state (cursor-based pagination) ──
   const [logs, setLogs] = useState<RecentLogRow[]>([]);
@@ -320,6 +204,11 @@ export default function LivePage() {
   });
   const [modelOptions, setModelOptions] = useState<string[]>([]);
   const [providerOptions, setProviderOptions] = useState<string[]>([]);
+
+  // ── Model id → display name map (for showing names instead of IDs) ──
+  const [modelNameMap, setModelNameMap] = useState<Map<string, string>>(
+    () => new Map(),
+  );
 
   // ── SSE connection state ──
   const [connected, setConnected] = useState(false);
@@ -393,6 +282,23 @@ export default function LivePage() {
       setLoadingMore(false);
     }
   }, [loadingMore, hasMore]);
+
+  // ── Infinite scroll: auto-load when bottom sentinel enters viewport ──
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          fetchMore();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [fetchMore]);
 
   // ── Fetch filter metadata ──
   const fetchFilterOptions = useCallback(async () => {
@@ -493,6 +399,20 @@ export default function LivePage() {
     connectRef.current = connect;
   }, [connect]);
 
+  // ── Load models once on mount to map model_id → displayName ──
+  useEffect(() => {
+    queueMicrotask(async () => {
+      try {
+        const r = await apiFetch<{ data: ModelRow[] }>("/api/admin/models");
+        const map = new Map<string, string>();
+        for (const m of r.data) map.set(m.id, m.displayName || m.id);
+        setModelNameMap(map);
+      } catch {
+        // Best-effort: fall back to model_id display
+      }
+    });
+  }, []);
+
   // ── Fetch initial + filters + connect SSE on mount / filter change ──
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -512,7 +432,7 @@ export default function LivePage() {
   const hasInFlight = logs.some((r) => !r.completed && !r.aborted);
   useEffect(() => {
     if (!hasInFlight) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
+    const id = setInterval(() => setNow(Date.now()), 200);
     return () => clearInterval(id);
   }, [hasInFlight]);
 
@@ -548,7 +468,7 @@ export default function LivePage() {
         providerOptions={providerOptions}
       />
 
-      <LiveCharts logs={logs} />
+      <LiveCharts logs={logs} modelNameMap={modelNameMap} />
 
       {loading && logs.length === 0 ? (
         <div className="space-y-2">
@@ -643,7 +563,7 @@ export default function LivePage() {
                 className: "w-[180px]",
                 render: (r) => (
                   <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
-                    {new Date(Number(r.ts)).toLocaleString()}
+                    {formatDate(Number(r.ts))}
                     {r.aborted ? (
                       <XCircle className="h-3.5 w-3.5 text-destructive" />
                     ) : !r.completed ? (
@@ -666,20 +586,32 @@ export default function LivePage() {
                 key: "model_id",
                 label: t("live.table.model"),
                 className: "w-[180px]",
+                render: (r) => {
+                  const id = String(r.model_id ?? "");
+                  const name = id ? (modelNameMap.get(id) ?? id) : "—";
+                  return (
+                    <span
+                      className="text-xs truncate block"
+                      title={id || undefined}
+                    >
+                      {name}
+                    </span>
+                  );
+                },
               },
               {
                 key: "provider_name",
-                label: "Provider",
+                label: t("live.table.provider"),
                 className: "w-[110px]",
                 render: (r) => String(r.provider_name ?? r.provider_id ?? "—"),
               },
               {
                 key: "status",
                 label: t("live.table.status"),
-                className: "w-[70px]",
+                className: "w-[90px]",
                 render: (r) => {
                   const s = Number(r.status);
-                  if (r.aborted)
+                  if (r.aborted && s === 0)
                     return (
                       <Badge
                         variant="destructive"
@@ -785,28 +717,20 @@ export default function LivePage() {
             ]}
           />
 
-          <div className="flex justify-center py-2">
-            {hasMore ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={fetchMore}
-                disabled={loadingMore}
-                className="gap-1.5 text-xs"
-              >
-                {loadingMore ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <ChevronDown className="h-3.5 w-3.5" />
-                )}
-                {loadingMore ? t("common.loading") : t("live.loadMore")}
-              </Button>
-            ) : (
-              logs.length > 0 && (
-                <span className="text-xs text-muted-foreground">
-                  {t("live.allLoaded")}
-                </span>
-              )
+          <div
+            ref={loadMoreRef}
+            className="flex justify-center py-4 min-h-[40px]"
+          >
+            {loadingMore && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {t("common.loading")}
+              </span>
+            )}
+            {!hasMore && logs.length > 0 && (
+              <span className="text-xs text-muted-foreground">
+                {t("live.allLoaded")}
+              </span>
             )}
           </div>
         </>

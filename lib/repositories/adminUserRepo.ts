@@ -3,23 +3,13 @@ import { hashPassword } from "@/lib/auth/password";
 import { prisma } from "@/lib/prisma";
 import type { UserRole } from "@/lib/types";
 
-/** Convert BigInt quota fields to Number for JSON serialization. */
-function mapUserRow<T extends Record<string, unknown>>(r: T): T {
-  return {
-    ...r,
-    rollingQuota: r.rollingQuota != null ? Number(r.rollingQuota) : null,
-    weekQuota: r.weekQuota != null ? Number(r.weekQuota) : null,
-    monthQuota: r.monthQuota != null ? Number(r.monthQuota) : null,
-  };
-}
-
 export const adminUserRepo = {
   async count(): Promise<number> {
     return prisma.adminUser.count();
   },
 
   async findAll() {
-    const rows = await prisma.adminUser.findMany({
+    return prisma.adminUser.findMany({
       select: {
         id: true,
         username: true,
@@ -36,35 +26,17 @@ export const adminUserRepo = {
         rollingQuotaUsed: true,
         weekQuotaUsed: true,
         monthQuotaUsed: true,
-        rollingInputTokensUsed: true,
-        rollingCachedReadTokensUsed: true,
-        rollingOutputTokensUsed: true,
-        weekInputTokensUsed: true,
-        weekCachedReadTokensUsed: true,
-        weekOutputTokensUsed: true,
-        monthInputTokensUsed: true,
-        monthCachedReadTokensUsed: true,
-        monthOutputTokensUsed: true,
-        rollingQuotaResetAt: true,
-        weekQuotaResetAt: true,
-        monthQuotaResetAt: true,
-        quotaMultiplierInput: true,
-        quotaMultiplierCachedRead: true,
-        quotaMultiplierOutput: true,
       },
       orderBy: { username: "asc" },
     });
-    return rows.map(mapUserRow);
   },
 
   async findById(id: string) {
-    const row = await prisma.adminUser.findUnique({ where: { id } });
-    return row ? mapUserRow(row) : null;
+    return prisma.adminUser.findUnique({ where: { id } });
   },
 
   async findByUsername(username: string) {
-    const row = await prisma.adminUser.findUnique({ where: { username } });
-    return row ? mapUserRow(row) : null;
+    return prisma.adminUser.findUnique({ where: { username } });
   },
 
   async create(
@@ -99,12 +71,15 @@ export const adminUserRepo = {
     });
   },
 
-  /** Admin-only: reset a user's password without touching mustChangePassword. */
+  /**
+   * Admin-initiated password reset for another user.
+   * Forces `mustChangePassword = true` so the target user must rotate it on next sign-in.
+   */
   async adminResetPassword(id: string, plainPassword: string) {
     const passwordHash = await hashPassword(plainPassword);
     return prisma.adminUser.update({
       where: { id },
-      data: { passwordHash },
+      data: { passwordHash, mustChangePassword: true },
     });
   },
 
@@ -163,13 +138,9 @@ export const adminUserRepo = {
   ) {
     const data: Record<string, unknown> = {};
     if (quota.rollingQuota !== undefined)
-      data.rollingQuota =
-        quota.rollingQuota != null ? BigInt(quota.rollingQuota) : null;
-    if (quota.weekQuota !== undefined)
-      data.weekQuota = quota.weekQuota != null ? BigInt(quota.weekQuota) : null;
-    if (quota.monthQuota !== undefined)
-      data.monthQuota =
-        quota.monthQuota != null ? BigInt(quota.monthQuota) : null;
+      data.rollingQuota = quota.rollingQuota;
+    if (quota.weekQuota !== undefined) data.weekQuota = quota.weekQuota;
+    if (quota.monthQuota !== undefined) data.monthQuota = quota.monthQuota;
     if (quota.quotaMultiplierInput !== undefined)
       data.quotaMultiplierInput = quota.quotaMultiplierInput;
     if (quota.quotaMultiplierCachedRead !== undefined)
