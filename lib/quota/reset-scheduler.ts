@@ -308,6 +308,9 @@ export async function resetTick(): Promise<ResetTickResult> {
       rollingQuota: true,
       weekQuota: true,
       monthQuota: true,
+      rollingQuotaUsed: true,
+      weekQuotaUsed: true,
+      monthQuotaUsed: true,
       rollingInputTokensUsed: true,
       rollingCachedReadTokensUsed: true,
       rollingOutputTokensUsed: true,
@@ -327,6 +330,9 @@ export async function resetTick(): Promise<ResetTickResult> {
   });
 
   const DIMENSION_ZERO = {
+    rollingQuotaUsed: 0,
+    weekQuotaUsed: 0,
+    monthQuotaUsed: 0,
     rollingInputTokensUsed: 0,
     rollingCachedReadTokensUsed: 0,
     rollingOutputTokensUsed: 0,
@@ -349,6 +355,7 @@ export async function resetTick(): Promise<ResetTickResult> {
           u.rollingQuotaResetAt.getTime() <= nowTime
         ) {
           Object.assign(updates, {
+            rollingQuotaUsed: 0,
             rollingInputTokensUsed: 0,
             rollingCachedReadTokensUsed: 0,
             rollingOutputTokensUsed: 0,
@@ -373,6 +380,7 @@ export async function resetTick(): Promise<ResetTickResult> {
       if (u.weekQuota != null && u.weekQuota > 0n) {
         if (u.weekQuotaResetAt && u.weekQuotaResetAt.getTime() <= nowTime) {
           Object.assign(updates, {
+            weekQuotaUsed: 0,
             weekInputTokensUsed: 0,
             weekCachedReadTokensUsed: 0,
             weekOutputTokensUsed: 0,
@@ -395,6 +403,7 @@ export async function resetTick(): Promise<ResetTickResult> {
       if (u.monthQuota != null && u.monthQuota > 0n) {
         if (u.monthQuotaResetAt && u.monthQuotaResetAt.getTime() <= nowTime) {
           Object.assign(updates, {
+            monthQuotaUsed: 0,
             monthInputTokensUsed: 0,
             monthCachedReadTokensUsed: 0,
             monthOutputTokensUsed: 0,
@@ -434,15 +443,9 @@ export async function resetTick(): Promise<ResetTickResult> {
       rollingQuota: u.rollingQuota,
       weekQuota: u.weekQuota,
       monthQuota: u.monthQuota,
-      rollingInputTokensUsed: u.rollingInputTokensUsed,
-      rollingCachedReadTokensUsed: u.rollingCachedReadTokensUsed,
-      rollingOutputTokensUsed: u.rollingOutputTokensUsed,
-      weekInputTokensUsed: u.weekInputTokensUsed,
-      weekCachedReadTokensUsed: u.weekCachedReadTokensUsed,
-      weekOutputTokensUsed: u.weekOutputTokensUsed,
-      monthInputTokensUsed: u.monthInputTokensUsed,
-      monthCachedReadTokensUsed: u.monthCachedReadTokensUsed,
-      monthOutputTokensUsed: u.monthOutputTokensUsed,
+      rollingQuotaUsed: u.rollingQuotaUsed,
+      weekQuotaUsed: u.weekQuotaUsed,
+      monthQuotaUsed: u.monthQuotaUsed,
       quotaMultiplierInput: u.quotaMultiplierInput,
       quotaMultiplierCachedRead: u.quotaMultiplierCachedRead,
       quotaMultiplierOutput: u.quotaMultiplierOutput,

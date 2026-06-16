@@ -3,13 +3,23 @@ import { hashPassword } from "@/lib/auth/password";
 import { prisma } from "@/lib/prisma";
 import type { UserRole } from "@/lib/types";
 
+/** Convert BigInt quota fields to Number for JSON serialization. */
+function mapUserRow<T extends Record<string, unknown>>(r: T): T {
+  return {
+    ...r,
+    rollingQuota: r.rollingQuota != null ? Number(r.rollingQuota) : null,
+    weekQuota: r.weekQuota != null ? Number(r.weekQuota) : null,
+    monthQuota: r.monthQuota != null ? Number(r.monthQuota) : null,
+  };
+}
+
 export const adminUserRepo = {
   async count(): Promise<number> {
     return prisma.adminUser.count();
   },
 
   async findAll() {
-    return prisma.adminUser.findMany({
+    const rows = await prisma.adminUser.findMany({
       select: {
         id: true,
         username: true,
@@ -23,6 +33,9 @@ export const adminUserRepo = {
         rollingQuota: true,
         weekQuota: true,
         monthQuota: true,
+        rollingQuotaUsed: true,
+        weekQuotaUsed: true,
+        monthQuotaUsed: true,
         rollingInputTokensUsed: true,
         rollingCachedReadTokensUsed: true,
         rollingOutputTokensUsed: true,
@@ -41,14 +54,17 @@ export const adminUserRepo = {
       },
       orderBy: { username: "asc" },
     });
+    return rows.map(mapUserRow);
   },
 
   async findById(id: string) {
-    return prisma.adminUser.findUnique({ where: { id } });
+    const row = await prisma.adminUser.findUnique({ where: { id } });
+    return row ? mapUserRow(row) : null;
   },
 
   async findByUsername(username: string) {
-    return prisma.adminUser.findUnique({ where: { username } });
+    const row = await prisma.adminUser.findUnique({ where: { username } });
+    return row ? mapUserRow(row) : null;
   },
 
   async create(
@@ -161,6 +177,18 @@ export const adminUserRepo = {
     if (quota.quotaMultiplierOutput !== undefined)
       data.quotaMultiplierOutput = quota.quotaMultiplierOutput;
     return prisma.adminUser.update({ where: { id }, data });
+  },
+
+  /** Direct-increment user quota used counters (weighted fee total). */
+  async incrementUserQuotaUsed(userId: string, total: number): Promise<void> {
+    if (total <= 0) return;
+    await prisma.$executeRaw`
+      UPDATE AdminUser
+      SET rollingQuotaUsed = rollingQuotaUsed + ${total},
+          weekQuotaUsed    = weekQuotaUsed    + ${total},
+          monthQuotaUsed   = monthQuotaUsed   + ${total}
+      WHERE id = ${userId}
+    `;
   },
 
   /** Bulk increment per-dimension token counters for users (called by cron flusher). */

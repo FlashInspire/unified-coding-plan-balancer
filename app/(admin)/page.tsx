@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "./_components/api";
 import { useT } from "./_components/i18n-provider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,18 +13,8 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  Cell,
 } from "recharts";
-import {
-  Server,
-  Layers,
-  Key,
-  ScrollText,
-  Users,
-  Settings,
-  TrendingUp,
-  Zap,
-} from "lucide-react";
+import { TrendingUp, Zap } from "lucide-react";
 
 const PERIODS = [
   { value: "hour", label: "1h" },
@@ -110,6 +99,52 @@ export default function AdminHome() {
   const rc = data?.requestCounts;
   const maxRequests = rc ? Math.max(rc.hour, rc.day, rc.week, rc.month, 1) : 1;
 
+  // Merge modelCounts + tokenCounts so each chart can toggle between calls and tokens
+  const mergedModelData = useMemo(() => {
+    if (!data) return [];
+    const map = new Map<
+      string,
+      {
+        model_id: string;
+        requests: number;
+        tokens: number;
+        input_tokens: number;
+        cached_input_tokens: number;
+        output_tokens: number;
+      }
+    >();
+    for (const m of data.modelCounts) {
+      map.set(m.model_id, {
+        model_id: m.model_id,
+        requests: m.requests,
+        tokens: 0,
+        input_tokens: 0,
+        cached_input_tokens: 0,
+        output_tokens: 0,
+      });
+    }
+    for (const t of data.tokenCounts) {
+      const existing = map.get(t.model_id);
+      if (existing) {
+        existing.tokens =
+          t.input_tokens + t.cached_input_tokens + t.output_tokens;
+        existing.input_tokens = t.input_tokens;
+        existing.cached_input_tokens = t.cached_input_tokens;
+        existing.output_tokens = t.output_tokens;
+      } else {
+        map.set(t.model_id, {
+          model_id: t.model_id,
+          requests: 0,
+          tokens: t.input_tokens + t.cached_input_tokens + t.output_tokens,
+          input_tokens: t.input_tokens,
+          cached_input_tokens: t.cached_input_tokens,
+          output_tokens: t.output_tokens,
+        });
+      }
+    }
+    return [...map.values()];
+  }, [data]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -157,7 +192,7 @@ export default function AdminHome() {
 
       {/* Charts section */}
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Model Call Count */}
+        {/* Model Usage */}
         <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
@@ -186,35 +221,73 @@ export default function AdminHome() {
           <CardContent>
             {loading ? (
               <Skeleton className="h-[200px] w-full" />
-            ) : data && data.modelCounts.length > 0 ? (
-              <ResponsiveContainer
-                width="100%"
-                height={Math.max(200, data.modelCounts.length * 32)}
-              >
+            ) : data && mergedModelData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={200}>
                 <BarChart
-                  data={data.modelCounts}
-                  layout="vertical"
-                  margin={{ top: 0, right: 20, bottom: 0, left: 0 }}
+                  data={[...mergedModelData]
+                    .sort((a, b) => b.requests - a.requests)
+                    .slice(0, 10)}
+                  margin={{ top: 0, right: 24, bottom: 0, left: 0 }}
                 >
-                  <XAxis type="number" tick={{ fontSize: 10 }} />
-                  <YAxis
-                    type="category"
+                  <XAxis
                     dataKey="model_id"
                     tick={{ fontSize: 10 }}
-                    width={120}
+                    interval={0}
+                    angle={-30}
+                    textAnchor="end"
+                    height={60}
+                  />
+                  <YAxis
+                    yAxisId="left"
+                    tick={{ fontSize: 10 }}
+                    allowDecimals={false}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    tick={{ fontSize: 10 }}
+                    tickFormatter={fmtTokens}
                   />
                   <Tooltip
-                    formatter={(value) => [`${value} calls`, "Requests"]}
+                    formatter={(value, name) => {
+                      if (name === "Calls") return [`${value} calls`, "Calls"];
+                      return [fmtTokens(Number(value)), name];
+                    }}
                     labelFormatter={(label) => `Model: ${label}`}
                   />
-                  <Bar dataKey="requests" radius={[0, 3, 3, 0]} barSize={16}>
-                    {data.modelCounts.map((_, i) => (
-                      <Cell
-                        key={i}
-                        fill={CHART_COLORS[i % CHART_COLORS.length]}
-                      />
-                    ))}
-                  </Bar>
+                  <Bar
+                    yAxisId="left"
+                    dataKey="requests"
+                    name="Calls"
+                    fill={CHART_COLORS[0]}
+                    barSize={12}
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Bar
+                    yAxisId="right"
+                    dataKey="input_tokens"
+                    name="Input"
+                    stackId="tokens"
+                    fill={TOKEN_COLORS.input}
+                    barSize={12}
+                  />
+                  <Bar
+                    yAxisId="right"
+                    dataKey="cached_input_tokens"
+                    name="Cached Input"
+                    stackId="tokens"
+                    fill={TOKEN_COLORS.cached}
+                    barSize={12}
+                  />
+                  <Bar
+                    yAxisId="right"
+                    dataKey="output_tokens"
+                    name="Output"
+                    stackId="tokens"
+                    fill={TOKEN_COLORS.output}
+                    barSize={12}
+                    radius={[4, 4, 0, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -254,57 +327,72 @@ export default function AdminHome() {
           <CardContent>
             {loading ? (
               <Skeleton className="h-[200px] w-full" />
-            ) : data && data.tokenCounts.length > 0 ? (
-              <ResponsiveContainer
-                width="100%"
-                height={Math.max(200, data.tokenCounts.length * 32)}
-              >
+            ) : data && mergedModelData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={200}>
                 <BarChart
-                  data={data.tokenCounts}
-                  layout="vertical"
-                  margin={{ top: 0, right: 20, bottom: 0, left: 0 }}
+                  data={[...mergedModelData]
+                    .sort((a, b) => b.tokens - a.tokens)
+                    .slice(0, 10)}
+                  margin={{ top: 0, right: 24, bottom: 0, left: 0 }}
                 >
                   <XAxis
-                    type="number"
+                    dataKey="model_id"
+                    tick={{ fontSize: 10 }}
+                    interval={0}
+                    angle={-30}
+                    textAnchor="end"
+                    height={60}
+                  />
+                  <YAxis
+                    yAxisId="left"
+                    tick={{ fontSize: 10 }}
+                    allowDecimals={false}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
                     tick={{ fontSize: 10 }}
                     tickFormatter={fmtTokens}
                   />
-                  <YAxis
-                    type="category"
-                    dataKey="model_id"
-                    tick={{ fontSize: 10 }}
-                    width={120}
-                  />
                   <Tooltip
-                    formatter={(value, name) => [
-                      fmtTokens(Number(value)),
-                      String(name).replace(/_/g, " "),
-                    ]}
+                    formatter={(value, name) => {
+                      if (name === "Calls") return [`${value} calls`, "Calls"];
+                      return [fmtTokens(Number(value)), name];
+                    }}
                     labelFormatter={(label) => `Model: ${label}`}
                   />
                   <Bar
+                    yAxisId="left"
+                    dataKey="requests"
+                    name="Calls"
+                    fill={CHART_COLORS[0]}
+                    barSize={12}
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Bar
+                    yAxisId="right"
                     dataKey="input_tokens"
                     name="Input"
                     stackId="tokens"
                     fill={TOKEN_COLORS.input}
-                    barSize={16}
-                    radius={[0, 0, 0, 0]}
+                    barSize={12}
                   />
                   <Bar
+                    yAxisId="right"
                     dataKey="cached_input_tokens"
                     name="Cached Input"
                     stackId="tokens"
                     fill={TOKEN_COLORS.cached}
-                    barSize={16}
-                    radius={[0, 0, 0, 0]}
+                    barSize={12}
                   />
                   <Bar
+                    yAxisId="right"
                     dataKey="output_tokens"
                     name="Output"
                     stackId="tokens"
                     fill={TOKEN_COLORS.output}
-                    barSize={16}
-                    radius={[0, 3, 3, 0]}
+                    barSize={12}
+                    radius={[4, 4, 0, 0]}
                   />
                 </BarChart>
               </ResponsiveContainer>
@@ -315,64 +403,6 @@ export default function AdminHome() {
             )}
           </CardContent>
         </Card>
-      </div>
-
-      {/* Navigation cards */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {(
-          [
-            {
-              href: "/providers",
-              label: t("dashboard.nav.providers"),
-              icon: Server,
-              desc: t("dashboard.nav.providersDesc"),
-            },
-            {
-              href: "/models",
-              label: t("dashboard.nav.models"),
-              icon: Layers,
-              desc: t("dashboard.nav.modelsDesc"),
-            },
-            {
-              href: "/api-keys",
-              label: t("dashboard.nav.apiKeys"),
-              icon: Key,
-              desc: t("dashboard.nav.apiKeysDesc"),
-            },
-            {
-              href: "/live",
-              label: t("dashboard.nav.live"),
-              icon: ScrollText,
-              desc: t("dashboard.nav.liveDesc"),
-            },
-            {
-              href: "/users",
-              label: t("dashboard.nav.users"),
-              icon: Users,
-              desc: t("dashboard.nav.usersDesc"),
-            },
-            {
-              href: "/settings",
-              label: t("dashboard.nav.settings"),
-              icon: Settings,
-              desc: t("dashboard.nav.settingsDesc"),
-            },
-          ] as const
-        ).map((card) => (
-          <Link
-            key={card.href}
-            href={card.href}
-            className="group rounded-lg border bg-card p-4 hover:bg-accent/50 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <card.icon className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" />
-              <div>
-                <div className="text-sm font-medium">{card.label}</div>
-                <div className="text-xs text-muted-foreground">{card.desc}</div>
-              </div>
-            </div>
-          </Link>
-        ))}
       </div>
     </div>
   );

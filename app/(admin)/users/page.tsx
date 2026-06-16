@@ -22,6 +22,9 @@ interface UserRow {
   rollingQuota: number | null;
   weekQuota: number | null;
   monthQuota: number | null;
+  rollingQuotaUsed: number;
+  weekQuotaUsed: number;
+  monthQuotaUsed: number;
   rollingInputTokensUsed: number;
   rollingCachedReadTokensUsed: number;
   rollingOutputTokensUsed: number;
@@ -490,31 +493,19 @@ export default function UsersPage() {
                     : n >= 1_000
                       ? `${(n / 1_000).toFixed(1)}K`
                       : String(n);
-                const eff = (period: "rolling" | "week" | "month") => {
-                  const input = row[
-                    `${period}InputTokensUsed` as keyof UserRow
-                  ] as number;
-                  const cached = row[
-                    `${period}CachedReadTokensUsed` as keyof UserRow
-                  ] as number;
-                  const output = row[
-                    `${period}OutputTokensUsed` as keyof UserRow
-                  ] as number;
-                  return (
-                    input * row.quotaMultiplierInput +
-                    cached * row.quotaMultiplierCachedRead +
-                    output * row.quotaMultiplierOutput
-                  );
-                };
                 const parts: string[] = [];
                 if (row.rollingQuota != null && row.rollingQuota > 0)
                   parts.push(
-                    `H: ${fmt(eff("rolling"))}/${fmt(row.rollingQuota)}`,
+                    `H: ${fmt(row.rollingQuotaUsed)}/${fmt(row.rollingQuota)}`,
                   );
                 if (row.weekQuota != null && row.weekQuota > 0)
-                  parts.push(`W: ${fmt(eff("week"))}/${fmt(row.weekQuota)}`);
+                  parts.push(
+                    `W: ${fmt(row.weekQuotaUsed)}/${fmt(row.weekQuota)}`,
+                  );
                 if (row.monthQuota != null && row.monthQuota > 0)
-                  parts.push(`M: ${fmt(eff("month"))}/${fmt(row.monthQuota)}`);
+                  parts.push(
+                    `M: ${fmt(row.monthQuotaUsed)}/${fmt(row.monthQuota)}`,
+                  );
                 return (
                   <span className="text-xs text-muted-foreground">
                     {parts.length > 0 ? parts.join(" ") : "∞"}

@@ -123,7 +123,7 @@ export class OpenAIAdapter implements ProviderAdapter {
     let finalUsage: NormalizedChunk["usage"];
     let finalFinishReason: string | null | undefined;
 
-    for await (const line of sseLines(res.body)) {
+    for await (const line of sseLines(res.body, signal)) {
       if (!line.startsWith("data:")) continue;
       const payload = line.slice(5).trim();
       if (!payload || payload === "[DONE]") continue;

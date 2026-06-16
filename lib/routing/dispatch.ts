@@ -787,6 +787,15 @@ function wrapStream(
       let aborted = false;
       try {
         for await (const chunk of src) {
+          // Proactively check for client abort between chunks. Without this,
+          // the loop only exits when the upstream fetch or sseLines throws.
+          // This ensures timely cleanup even when the upstream connection
+          // hasn't been closed yet (e.g. Nginx delay in propagating client
+          // disconnect).
+          if (ctx.ctx.signal?.aborted) {
+            aborted = true;
+            throw new DOMException("The operation was aborted.", "AbortError");
+          }
           // Only measure TTFT on actual text content. Tool-call-only responses
           // don't generate text tokens, so TTFT would be misleading there.
           if (chunk.delta && ttft == null) {

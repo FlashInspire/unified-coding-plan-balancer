@@ -8,9 +8,16 @@ import { useT } from "../_components/i18n-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Copy, Pencil, Power } from "lucide-react";
+import { Copy, Pencil, Power, RefreshCw } from "lucide-react";
 import type { ApiKeyRow } from "@/lib/types";
 import type { RecentLogRow } from "@/lib/metrics/queryRouter";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 interface CreatedApiKey {
   id: string;
@@ -24,6 +31,8 @@ export default function ApiKeysPage() {
   const [loading, setLoading] = useState(true);
   const [created, setCreated] = useState<CreatedApiKey | null>(null);
   const [editRow, setEditRow] = useState<ApiKeyRow | null>(null);
+  const [regenerateRow, setRegenerateRow] = useState<ApiKeyRow | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
 
   async function load() {
     try {
@@ -66,11 +75,14 @@ export default function ApiKeysPage() {
         />
       </div>
 
-      {/* Created key banner */}
+      {/* New / regenerated key banner */}
       {created && (
         <div className="rounded-lg border-2 border-yellow-500 bg-yellow-50 p-4 dark:bg-yellow-950">
           <div className="font-semibold mb-2 text-sm">
-            Copy this key now — it will not be shown again:
+            {t("apiKeys.created.title")}
+          </div>
+          <div className="text-xs mb-3 text-muted-foreground">
+            {t("apiKeys.created.description")}
           </div>
           <div className="flex items-center gap-2">
             <code className="flex-1 bg-black text-green-300 p-3 rounded text-xs break-all">
@@ -90,10 +102,55 @@ export default function ApiKeysPage() {
             onClick={() => setCreated(null)}
             className="mt-3 text-xs underline text-muted-foreground"
           >
-            Dismiss
+            {t("apiKeys.created.close")}
           </button>
         </div>
       )}
+
+      {/* Regenerate confirmation modal */}
+      <Dialog
+        open={regenerateRow != null}
+        onOpenChange={(o) => {
+          if (!o) setRegenerateRow(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("apiKeys.regenerate.title")}</DialogTitle>
+          </DialogHeader>
+          <div className="text-sm text-muted-foreground">
+            {t("apiKeys.regenerate.warning")}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRegenerateRow(null)}>
+              {t("dialog.cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={regenerating}
+              onClick={async () => {
+                if (!regenerateRow) return;
+                setRegenerating(true);
+                try {
+                  const r = await apiFetch<{ data: CreatedApiKey }>(
+                    `/api/admin/api-keys/${regenerateRow.id}/regenerate`,
+                    { method: "POST" },
+                  );
+                  setCreated(r.data);
+                  setRegenerateRow(null);
+                  await load();
+                } catch (e) {
+                  alert(e instanceof Error ? e.message : "Failed");
+                } finally {
+                  setRegenerating(false);
+                }
+              }}
+            >
+              {regenerating ? "..." : t("apiKeys.regenerate.confirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit modal */}
       <FormDialog
@@ -205,6 +262,16 @@ export default function ApiKeysPage() {
             const k = row as unknown as ApiKeyRow;
             return (
               <div className="flex items-center gap-1">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRegenerateRow(k);
+                  }}
+                  className="inline-flex items-center justify-center h-7 w-7 rounded hover:bg-accent"
+                  title={t("apiKeys.action.regenerate")}
+                >
+                  <RefreshCw className="h-3 w-3" />
+                </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();

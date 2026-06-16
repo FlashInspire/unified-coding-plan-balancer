@@ -18,8 +18,17 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  Cell,
 } from "recharts";
+
+// ---------------------------------------------------------------------------
+// Formatters
+// ---------------------------------------------------------------------------
+
+function fmtTokens(v: number): string {
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
+  return String(v);
+}
 
 // ---------------------------------------------------------------------------
 // Live Charts
@@ -38,15 +47,26 @@ const CHART_COLORS = [
   "#22c55e",
 ];
 
+const TOKEN_COLORS = {
+  input: "hsl(221, 83%, 53%)",
+  cached: "hsl(142, 71%, 38%)",
+  output: "hsl(30, 91%, 55%)",
+};
+
 function RankBarChart({
   title,
   data,
 }: {
   title: string;
-  data: { name: string; count: number }[];
+  data: {
+    name: string;
+    calls: number;
+    input_tokens: number;
+    cached_input_tokens: number;
+    output_tokens: number;
+  }[];
 }) {
   if (data.length === 0) return null;
-  const chartHeight = Math.max(120, data.length * 28);
   return (
     <Card>
       <CardHeader className="pb-1 pt-3 px-4">
@@ -55,32 +75,70 @@ function RankBarChart({
         </CardTitle>
       </CardHeader>
       <CardContent className="px-2 pb-3">
-        <ResponsiveContainer width="100%" height={chartHeight}>
+        <ResponsiveContainer width="100%" height={200}>
           <BarChart
             data={data}
-            layout="vertical"
             margin={{ top: 0, right: 24, bottom: 0, left: 0 }}
           >
             <XAxis
-              type="number"
+              dataKey="name"
+              tick={{ fontSize: 10 }}
+              interval={0}
+              angle={-30}
+              textAnchor="end"
+              height={60}
+            />
+            <YAxis
+              yAxisId="left"
               tick={{ fontSize: 10 }}
               allowDecimals={false}
             />
             <YAxis
-              type="category"
-              dataKey="name"
+              yAxisId="right"
+              orientation="right"
               tick={{ fontSize: 10 }}
-              width={110}
+              tickFormatter={fmtTokens}
             />
             <Tooltip
-              formatter={(v) => [`${v} calls`, "Requests"]}
+              formatter={(value, name) => {
+                if (name === "Calls") return [`${value} calls`, "Calls"];
+                return [fmtTokens(Number(value)), name];
+              }}
               labelFormatter={(l) => String(l)}
             />
-            <Bar dataKey="count" radius={[0, 3, 3, 0]} barSize={14}>
-              {data.map((_, i) => (
-                <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-              ))}
-            </Bar>
+            <Bar
+              yAxisId="left"
+              dataKey="calls"
+              name="Calls"
+              fill={CHART_COLORS[0]}
+              barSize={12}
+              radius={[4, 4, 0, 0]}
+            />
+            <Bar
+              yAxisId="right"
+              dataKey="input_tokens"
+              name="Input"
+              stackId="tokens"
+              fill={TOKEN_COLORS.input}
+              barSize={12}
+            />
+            <Bar
+              yAxisId="right"
+              dataKey="cached_input_tokens"
+              name="Cached Input"
+              stackId="tokens"
+              fill={TOKEN_COLORS.cached}
+              barSize={12}
+            />
+            <Bar
+              yAxisId="right"
+              dataKey="output_tokens"
+              name="Output"
+              stackId="tokens"
+              fill={TOKEN_COLORS.output}
+              barSize={12}
+              radius={[4, 4, 0, 0]}
+            />
           </BarChart>
         </ResponsiveContainer>
       </CardContent>
@@ -90,39 +148,105 @@ function RankBarChart({
 
 function LiveCharts({ logs }: { logs: RecentLogRow[] }) {
   const keyData = useMemo(() => {
-    const m = new Map<string, number>();
+    const m = new Map<
+      string,
+      {
+        name: string;
+        calls: number;
+        input_tokens: number;
+        cached_input_tokens: number;
+        output_tokens: number;
+      }
+    >();
     for (const r of logs) {
       const k = String(r.api_key_name ?? r.api_key_id ?? "—");
-      m.set(k, (m.get(k) ?? 0) + 1);
+      const existing = m.get(k);
+      if (existing) {
+        existing.calls++;
+        existing.input_tokens += r.input_tokens ?? 0;
+        existing.cached_input_tokens += r.cached_input_tokens ?? 0;
+        existing.output_tokens += r.output_tokens ?? 0;
+      } else {
+        m.set(k, {
+          name: k,
+          calls: 1,
+          input_tokens: r.input_tokens ?? 0,
+          cached_input_tokens: r.cached_input_tokens ?? 0,
+          output_tokens: r.output_tokens ?? 0,
+        });
+      }
     }
-    return [...m.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([name, count]) => ({ name, count }));
+    return [...m.values()]
+      .sort((a, b) => b.calls - a.calls)
+      .slice(0, 10);
   }, [logs]);
 
   const modelData = useMemo(() => {
-    const m = new Map<string, number>();
+    const m = new Map<
+      string,
+      {
+        name: string;
+        calls: number;
+        input_tokens: number;
+        cached_input_tokens: number;
+        output_tokens: number;
+      }
+    >();
     for (const r of logs) {
       const k = String(r.model_id ?? "—");
-      m.set(k, (m.get(k) ?? 0) + 1);
+      const existing = m.get(k);
+      if (existing) {
+        existing.calls++;
+        existing.input_tokens += r.input_tokens ?? 0;
+        existing.cached_input_tokens += r.cached_input_tokens ?? 0;
+        existing.output_tokens += r.output_tokens ?? 0;
+      } else {
+        m.set(k, {
+          name: k,
+          calls: 1,
+          input_tokens: r.input_tokens ?? 0,
+          cached_input_tokens: r.cached_input_tokens ?? 0,
+          output_tokens: r.output_tokens ?? 0,
+        });
+      }
     }
-    return [...m.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([name, count]) => ({ name, count }));
+    return [...m.values()]
+      .sort((a, b) => b.calls - a.calls)
+      .slice(0, 10);
   }, [logs]);
 
   const providerData = useMemo(() => {
-    const m = new Map<string, number>();
+    const m = new Map<
+      string,
+      {
+        name: string;
+        calls: number;
+        input_tokens: number;
+        cached_input_tokens: number;
+        output_tokens: number;
+      }
+    >();
     for (const r of logs) {
       const k = String(r.provider_name ?? r.provider_id ?? "—");
-      m.set(k, (m.get(k) ?? 0) + 1);
+      const existing = m.get(k);
+      if (existing) {
+        existing.calls++;
+        existing.input_tokens += r.input_tokens ?? 0;
+        existing.cached_input_tokens += r.cached_input_tokens ?? 0;
+        existing.output_tokens += r.output_tokens ?? 0;
+      } else {
+        m.set(k, {
+          name: k,
+          calls: 1,
+          input_tokens: r.input_tokens ?? 0,
+          cached_input_tokens: r.cached_input_tokens ?? 0,
+          output_tokens: r.output_tokens ?? 0,
+        });
+      }
     }
-    return [...m.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([name, count]) => ({ name, count }));
+    return [...m.values()]
+      .sort((a, b) => b.calls - a.calls)
+      .slice(0, 10);
   }, [logs]);
 
   if (logs.length === 0) return null;
@@ -176,12 +300,6 @@ const fmtDuration = (ms: number) => {
   if (ms >= 10_000) return `${(ms / 1_000).toFixed(2)}s`;
   return `${ms}ms`;
 };
-const fmtTokens = (v: number) =>
-  v >= 1_000_000
-    ? `${(v / 1_000_000).toFixed(1)}M`
-    : v >= 1_000
-      ? `${(v / 1_000).toFixed(1)}K`
-      : String(v);
 
 export default function LivePage() {
   const t = useT();
@@ -214,6 +332,7 @@ export default function LivePage() {
   const connectRef = useRef<() => void>(() => {});
   const logsRef = useRef<RecentLogRow[]>([]);
   const filtersRef = useRef(filters);
+  const lastFilterFetchRef = useRef(0);
 
   // Keep refs in sync
   useEffect(() => {
@@ -341,8 +460,12 @@ export default function LivePage() {
                   // New record → prepend (newest first)
                   return [row, ...prev];
                 });
-                // Refresh filter options periodically on new data
-                fetchFilterOptions();
+                // Refresh filter options at most once every 30s
+                const now = Date.now();
+                if (now - lastFilterFetchRef.current > 30_000) {
+                  lastFilterFetchRef.current = now;
+                  fetchFilterOptions();
+                }
               }
               // heartbeat → no-op (connection alive)
             } catch {

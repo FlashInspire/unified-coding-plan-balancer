@@ -121,6 +121,9 @@ function UserProfileCard() {
     rollingQuota: number | null;
     weekQuota: number | null;
     monthQuota: number | null;
+    rollingQuotaUsed: number;
+    weekQuotaUsed: number;
+    monthQuotaUsed: number;
     rollingInputTokensUsed: number;
     rollingCachedReadTokensUsed: number;
     rollingOutputTokensUsed: number;
@@ -159,6 +162,9 @@ function UserProfileCard() {
             rollingQuota: number | null;
             weekQuota: number | null;
             monthQuota: number | null;
+            rollingQuotaUsed: number;
+            weekQuotaUsed: number;
+            monthQuotaUsed: number;
             rollingInputTokensUsed: number;
             rollingCachedReadTokensUsed: number;
             rollingOutputTokensUsed: number;
@@ -375,37 +381,21 @@ function UserProfileCard() {
                     : n >= 1_000
                       ? `${(n / 1_000).toFixed(1)}K`
                       : String(n);
-                const effUsed = (period: "rolling" | "week" | "month") => {
-                  const input = profile[
-                    `${period}InputTokensUsed` as keyof typeof profile
-                  ] as number;
-                  const cached = profile[
-                    `${period}CachedReadTokensUsed` as keyof typeof profile
-                  ] as number;
-                  const output = profile[
-                    `${period}OutputTokensUsed` as keyof typeof profile
-                  ] as number;
-                  return (
-                    input * profile.quotaMultiplierInput +
-                    cached * profile.quotaMultiplierCachedRead +
-                    output * profile.quotaMultiplierOutput
-                  );
-                };
                 const dims = [
                   {
                     label: t("settings.profile.quotaRolling"),
                     q: profile.rollingQuota,
-                    used: effUsed("rolling"),
+                    used: profile.rollingQuotaUsed,
                   },
                   {
                     label: t("settings.profile.quotaWeek"),
                     q: profile.weekQuota,
-                    used: effUsed("week"),
+                    used: profile.weekQuotaUsed,
                   },
                   {
                     label: t("settings.profile.quotaMonth"),
                     q: profile.monthQuota,
-                    used: effUsed("month"),
+                    used: profile.monthQuotaUsed,
                   },
                 ].filter((d) => d.q != null && d.q > 0);
                 if (dims.length === 0)

@@ -33,9 +33,13 @@ export async function GET(): Promise<Response> {
       language: prefs.language,
       theme: prefs.theme,
       // User-level quota (read-only for non-admins)
-      rollingQuota: user.rollingQuota,
-      weekQuota: user.weekQuota,
-      monthQuota: user.monthQuota,
+      rollingQuota:
+        user.rollingQuota != null ? Number(user.rollingQuota) : null,
+      weekQuota: user.weekQuota != null ? Number(user.weekQuota) : null,
+      monthQuota: user.monthQuota != null ? Number(user.monthQuota) : null,
+      rollingQuotaUsed: user.rollingQuotaUsed ?? 0,
+      weekQuotaUsed: user.weekQuotaUsed ?? 0,
+      monthQuotaUsed: user.monthQuotaUsed ?? 0,
       rollingInputTokensUsed: user.rollingInputTokensUsed,
       rollingCachedReadTokensUsed: user.rollingCachedReadTokensUsed,
       rollingOutputTokensUsed: user.rollingOutputTokensUsed,

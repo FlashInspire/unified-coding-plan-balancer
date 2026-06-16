@@ -64,6 +64,16 @@ export const apiKeyRepo = {
     });
   },
 
+  async regenerate(id: string): Promise<CreatedApiKey> {
+    const plaintext = generatePlaintext();
+    const keyHash = sha256Hex(plaintext);
+    const row = await prisma.apiKey.update({
+      where: { id },
+      data: { keyHash },
+    });
+    return { id: row.id, name: row.name, plaintext };
+  },
+
   async delete(id: string): Promise<void> {
     await prisma.apiKey.delete({ where: { id } });
   },

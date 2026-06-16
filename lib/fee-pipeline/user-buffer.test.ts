@@ -13,15 +13,9 @@ const defaultMultipliers = {
 };
 
 const zeroCounters = {
-  rollingInputTokensUsed: 0,
-  rollingCachedReadTokensUsed: 0,
-  rollingOutputTokensUsed: 0,
-  weekInputTokensUsed: 0,
-  weekCachedReadTokensUsed: 0,
-  weekOutputTokensUsed: 0,
-  monthInputTokensUsed: 0,
-  monthCachedReadTokensUsed: 0,
-  monthOutputTokensUsed: 0,
+  rollingQuotaUsed: 0,
+  weekQuotaUsed: 0,
+  monthQuotaUsed: 0,
 };
 
 describe("UserDimensionBuffer", () => {
@@ -116,8 +110,9 @@ describe("UserDimensionBuffer", () => {
         rollingQuota: 1000n,
         weekQuota: null,
         monthQuota: null,
-        ...zeroCounters,
-        rollingInputTokensUsed: 950,
+        rollingQuotaUsed: 950,
+        weekQuotaUsed: 0,
+        monthQuotaUsed: 0,
         ...defaultMultipliers,
       });
       // 950 (db) + 0 (pending) + 60 (new) = 1010 >= 1000
@@ -131,8 +126,9 @@ describe("UserDimensionBuffer", () => {
         rollingQuota: null,
         weekQuota: 5000n,
         monthQuota: null,
-        ...zeroCounters,
-        weekOutputTokensUsed: 4900,
+        rollingQuotaUsed: 0,
+        weekQuotaUsed: 4900,
+        monthQuotaUsed: 0,
         ...defaultMultipliers,
       });
       expect(userDimensionBuffer.isQuotaExceeded("u1", 0, 0, 101)).toBe(true);
@@ -144,8 +140,9 @@ describe("UserDimensionBuffer", () => {
         rollingQuota: null,
         weekQuota: null,
         monthQuota: 10000n,
-        ...zeroCounters,
-        monthInputTokensUsed: 9999,
+        rollingQuotaUsed: 0,
+        weekQuotaUsed: 0,
+        monthQuotaUsed: 9999,
         ...defaultMultipliers,
       });
       expect(userDimensionBuffer.isQuotaExceeded("u1", 2, 0, 0)).toBe(true);
@@ -158,8 +155,9 @@ describe("UserDimensionBuffer", () => {
         rollingQuota: 1000n,
         weekQuota: null,
         monthQuota: null,
-        ...zeroCounters,
-        rollingInputTokensUsed: 800,
+        rollingQuotaUsed: 800,
+        weekQuotaUsed: 0,
+        monthQuotaUsed: 0,
         ...defaultMultipliers,
       });
       userDimensionBuffer.increment("u1", 100, 0, 0);
@@ -174,8 +172,9 @@ describe("UserDimensionBuffer", () => {
         rollingQuota: 10000n,
         weekQuota: 2000n,
         monthQuota: 50000n,
-        ...zeroCounters,
-        weekInputTokensUsed: 1900,
+        rollingQuotaUsed: 0,
+        weekQuotaUsed: 1900,
+        monthQuotaUsed: 0,
         ...defaultMultipliers,
       });
       // week: 1900 + 101 = 2001 >= 2000 → exceeded
@@ -189,10 +188,9 @@ describe("UserDimensionBuffer", () => {
         rollingQuota: 1000n,
         weekQuota: null,
         monthQuota: null,
-        ...zeroCounters,
-        // 900 already used as: 800 input * 1.0 + 100 output * 1.0
-        rollingInputTokensUsed: 800,
-        rollingOutputTokensUsed: 100,
+        rollingQuotaUsed: 900,
+        weekQuotaUsed: 0,
+        monthQuotaUsed: 0,
         quotaMultiplierInput: 1.0,
         quotaMultiplierCachedRead: 0.1,
         quotaMultiplierOutput: 1.0,

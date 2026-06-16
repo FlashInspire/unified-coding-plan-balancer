@@ -147,6 +147,8 @@ export async function POST(req: Request): Promise<Response> {
             const openBlockIndices: number[] = [];
 
             for await (const chunk of result.iterator) {
+              // Check if the client has aborted before enqueueing more data.
+              if (req.signal.aborted) break;
               // Handle text delta — lazily open a text block on first delta.
               if (chunk.delta) {
                 if (textBlockIndex === null) {

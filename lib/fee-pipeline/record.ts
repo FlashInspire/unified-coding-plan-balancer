@@ -14,7 +14,7 @@
 
 import { computeAll, computeProviderDimensionFee } from "./compute";
 import { providerRepo } from "@/lib/repositories/providerRepo";
-import { userDimensionBuffer } from "./user-buffer";
+import { adminUserRepo } from "@/lib/repositories/adminUserRepo";
 import { apiKeyDimensionBuffer } from "./api-key-buffer";
 import type { FeePipelineInput, FeePipelineResult } from "./types";
 
@@ -49,14 +49,13 @@ export async function recordUsage(
     /* never block successful response on quota counter write */
   }
 
-  // ── 2. User dimension buffer (in-memory, flushed by cron) ──────
+  // ── 2. User quota — direct write of weighted fee total ────────
   if (input.userId) {
-    userDimensionBuffer.increment(
-      input.userId,
-      input.inputTokens,
-      input.cachedReadTokens + input.cacheWriteTokens,
-      input.outputTokens,
-    );
+    try {
+      await adminUserRepo.incrementUserQuotaUsed(input.userId, result.userFee);
+    } catch {
+      /* never block successful response on quota counter write */
+    }
   }
 
   // ── 3. API key dimension buffer (in-memory, flushed by cron) ───

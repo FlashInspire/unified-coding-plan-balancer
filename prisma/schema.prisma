@@ -167,7 +167,11 @@ model AdminUser {
   rollingQuota                BigInt?
   weekQuota                   BigInt?
   monthQuota                  BigInt?
-  // Per-dimension token counters (weighted by multipliers).
+  // Total weighted fee used (single counter per period, not per-dimension).
+  rollingQuotaUsed            Float     @default(0)
+  weekQuotaUsed               Float     @default(0)
+  monthQuotaUsed              Float     @default(0)
+  // Per-dimension token counters (for display / analytics only).
   rollingInputTokensUsed      Float     @default(0)
   rollingCachedReadTokensUsed Float     @default(0)
   rollingOutputTokensUsed     Float     @default(0)

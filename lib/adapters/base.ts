@@ -140,15 +140,30 @@ export function joinUrl(base: string, path: string): string {
   return `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }
 
-/** Best-effort SSE line iterator over a fetch Response body. */
+/**
+ * Best-effort SSE line iterator over a fetch Response body.
+ *
+ * When an AbortSignal is provided, the iterator checks `signal.aborted`
+ * before each read. This ensures timely abort detection even when the
+ * underlying `reader.read()` does not automatically reject on abort
+ * (runtime-dependent) and when Nginx hasn't yet closed the upstream
+ * connection after a client disconnect.
+ */
 export async function* sseLines(
   body: ReadableStream<Uint8Array> | null,
+  signal?: AbortSignal,
 ): AsyncGenerator<string> {
   if (!body) return;
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buf = "";
   for (;;) {
+    // Check abort before blocking on read — allows immediate exit when the
+    // client disconnects, without waiting for the upstream to produce data.
+    if (signal?.aborted) {
+      reader.cancel().catch(() => {});
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }
     const { value, done } = await reader.read();
     if (done) break;
     buf += decoder.decode(value, { stream: true });

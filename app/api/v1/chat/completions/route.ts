@@ -126,6 +126,10 @@ export async function POST(req: Request): Promise<Response> {
           req.signal.addEventListener("abort", abortHandler);
           try {
             for await (const chunk of result.iterator) {
+              // Check if the client has aborted before enqueueing more data.
+              // This avoids calling controller.enqueue() after controller.error()
+              // when the abortHandler has already fired.
+              if (req.signal.aborted) break;
               const sse = buildOpenAIStreamChunk({
                 modelId: rawBody.model as string,
                 delta: chunk.delta,

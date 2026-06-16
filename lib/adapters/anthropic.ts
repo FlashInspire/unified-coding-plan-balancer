@@ -176,7 +176,7 @@ export class AnthropicAdapter implements ProviderAdapter {
     const toolBlockToCallIndex = new Map<number, number>();
     let toolCallCounter = 0;
 
-    for await (const line of sseLines(res.body)) {
+    for await (const line of sseLines(res.body, signal)) {
       if (!line.startsWith("data:")) continue;
       const payload = line.slice(5).trim();
       if (!payload) continue;

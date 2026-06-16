@@ -18,17 +18,11 @@ export interface UserQuotaInfo {
   rollingQuota: bigint | null;
   weekQuota: bigint | null;
   monthQuota: bigint | null;
-  // Current DB values (per-dimension)
-  rollingInputTokensUsed: number;
-  rollingCachedReadTokensUsed: number;
-  rollingOutputTokensUsed: number;
-  weekInputTokensUsed: number;
-  weekCachedReadTokensUsed: number;
-  weekOutputTokensUsed: number;
-  monthInputTokensUsed: number;
-  monthCachedReadTokensUsed: number;
-  monthOutputTokensUsed: number;
-  // Multipliers
+  // Current DB values (total weighted fee used)
+  rollingQuotaUsed: number;
+  weekQuotaUsed: number;
+  monthQuotaUsed: number;
+  // Multipliers (still needed for incoming fee estimation)
   quotaMultiplierInput: number;
   quotaMultiplierCachedRead: number;
   quotaMultiplierOutput: number;
@@ -119,32 +113,29 @@ class UserDimensionBuffer {
       pending.cachedReadTokens * info.quotaMultiplierCachedRead +
       pending.outputTokens * info.quotaMultiplierOutput;
 
-    // Check each dimension's combined weighted total
+    // Check each period's total against quota
     // Rolling
     if (info.rollingQuota != null && info.rollingQuota > 0n) {
-      const dbFee =
-        info.rollingInputTokensUsed * info.quotaMultiplierInput +
-        info.rollingCachedReadTokensUsed * info.quotaMultiplierCachedRead +
-        info.rollingOutputTokensUsed * info.quotaMultiplierOutput;
-      if (dbFee + pendingFee + incomingFee >= Number(info.rollingQuota))
+      if (
+        info.rollingQuotaUsed + pendingFee + incomingFee >=
+        Number(info.rollingQuota)
+      )
         return true;
     }
     // Week
     if (info.weekQuota != null && info.weekQuota > 0n) {
-      const dbFee =
-        info.weekInputTokensUsed * info.quotaMultiplierInput +
-        info.weekCachedReadTokensUsed * info.quotaMultiplierCachedRead +
-        info.weekOutputTokensUsed * info.quotaMultiplierOutput;
-      if (dbFee + pendingFee + incomingFee >= Number(info.weekQuota))
+      if (
+        info.weekQuotaUsed + pendingFee + incomingFee >=
+        Number(info.weekQuota)
+      )
         return true;
     }
     // Month
     if (info.monthQuota != null && info.monthQuota > 0n) {
-      const dbFee =
-        info.monthInputTokensUsed * info.quotaMultiplierInput +
-        info.monthCachedReadTokensUsed * info.quotaMultiplierCachedRead +
-        info.monthOutputTokensUsed * info.quotaMultiplierOutput;
-      if (dbFee + pendingFee + incomingFee >= Number(info.monthQuota))
+      if (
+        info.monthQuotaUsed + pendingFee + incomingFee >=
+        Number(info.monthQuota)
+      )
         return true;
     }
 
