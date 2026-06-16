@@ -10,6 +10,8 @@
 !.yarn/releases
 !.yarn/versions
 
+/deploy.tgz
+
 # testing
 /coverage
 
@@ -47,4 +49,3 @@ next-env.d.ts
 
 !.env.example
 
-/deploy.tgz
