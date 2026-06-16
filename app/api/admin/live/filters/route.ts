@@ -1,5 +1,5 @@
 /**
- * GET /api/admin/logs/filters — Returns distinct model and provider IDs
+ * GET /api/admin/live/filters — Returns distinct model and provider IDs
  * available in the recent request_log data, respecting the caller's auth scope
  * and optional filter params (status, search). Used to populate filter bar
  * dropdowns independently of pagination.

@@ -50,9 +50,10 @@ export function ModelList({
         ) : (
           <div className="py-1">
             {[...filtered]
-              .sort((a, b) =>
-                a.enabled === b.enabled ? 0 : a.enabled ? -1 : 1,
-              )
+              .sort((a, b) => {
+                if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
+                return a.displayName.localeCompare(b.displayName);
+              })
               .map((m) => (
                 <button
                   key={m.id}

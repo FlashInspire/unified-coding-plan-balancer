@@ -265,7 +265,7 @@ function KeyCallLogs({ apiKeyId }: { apiKeyId: string }) {
     setLoading(true);
     try {
       const r = await apiFetch<{ data: RecentLogRow[]; total: number }>(
-        `/api/admin/logs?limit=50&apiKeyId=${apiKeyId}`,
+        `/api/admin/live?limit=50&apiKeyId=${apiKeyId}`,
       );
       setLogs(r.data);
     } catch {

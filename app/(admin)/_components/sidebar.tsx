@@ -30,8 +30,8 @@ const NAV_ITEMS = [
     roles: ["admin", "user"],
   },
   {
-    href: "/logs",
-    labelKey: "nav.logs",
+    href: "/live",
+    labelKey: "nav.live",
     icon: ScrollText,
     roles: ["admin", "user"],
   },

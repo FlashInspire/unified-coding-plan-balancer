@@ -31,7 +31,7 @@ export interface RecentLogRow {
 /**
  * Returns distinct model IDs and provider IDs available in request_log,
  * scoped to the same filter context (apiKeyIds, search, status, time window).
- * Used by the /api/admin/logs/filters endpoint to populate dropdown options
+ * Used by the /api/admin/live/filters endpoint to populate dropdown options
  * independently of pagination.
  */
 export async function recentLogFilters(
@@ -90,6 +90,7 @@ export async function recentLogs(
     days?: number;
     limit?: number;
     offset?: number;
+    afterId?: number;
     apiKeyId?: string;
     apiKeyIds?: string[];
     modelId?: string;
@@ -105,6 +106,11 @@ export async function recentLogs(
 
   // Build where clause
   const where: Record<string, unknown> = {};
+
+  // Cursor-based pagination: fetch records older than afterId
+  if (opts.afterId != null) {
+    where.id = { lt: BigInt(opts.afterId) };
+  }
 
   if (opts.apiKeyId) {
     where.apiKeyId = opts.apiKeyId;
@@ -143,37 +149,108 @@ export async function recentLogs(
     prisma.requestLog.findMany({
       where: where as never,
       orderBy: { ts: "desc" },
-      skip: offset,
+      skip: opts.afterId != null ? 0 : offset,
       take: limit,
     }),
     prisma.requestLog.count({ where: where as never }),
   ]);
 
   return {
-    rows: rows.map((r) => ({
-      id: Number(r.id),
-      ts: Number(r.ts),
-      api_key_id: r.apiKeyId,
-      api_key_name: r.apiKeyName ?? "",
-      model_id: r.modelId,
-      provider_id: r.providerId,
-      provider_name: r.providerName,
-      status: r.status,
-      latency_ms: r.latencyMs,
-      ttft_ms: r.ttftMs,
-      tps_out: r.tpsOut,
-      input_tokens: r.inputTokens,
-      cached_input_tokens: r.cachedInputTokens,
-      output_tokens: r.outputTokens,
-      stream: r.stream ? 1 : 0,
-      error_code: r.errorCode,
-      user_agent: r.userAgent,
-      real_model_id: r.realModelId,
-      ip: r.ip,
-      completed: r.completed ? 1 : 0,
-      aborted: r.aborted ? 1 : 0,
-    })),
+    rows: rows.map(mapRequestLogRow),
     total,
+  };
+}
+
+/**
+ * Fetch request_log rows by specific IDs.
+ * Used by SSE stream to re-check in-flight records.
+ */
+export async function recentLogsByIds(
+  ids: number[],
+  filterOpts?: {
+    apiKeyIds?: string[];
+    modelId?: string;
+    providerId?: string;
+    status?: "ok" | "error" | "inflight";
+    search?: string;
+  },
+): Promise<RecentLogRow[]> {
+  if (ids.length === 0) return [];
+
+  const where: Record<string, unknown> = {
+    id: { in: ids.map(BigInt) },
+  };
+
+  if (filterOpts?.apiKeyIds && filterOpts.apiKeyIds.length > 0) {
+    where.apiKeyId = { in: filterOpts.apiKeyIds };
+  }
+  if (filterOpts?.modelId) where.modelId = filterOpts.modelId;
+  if (filterOpts?.providerId) where.providerId = filterOpts.providerId;
+  if (filterOpts?.search) {
+    where.OR = [
+      { apiKeyName: { contains: filterOpts.search } },
+      { modelId: { contains: filterOpts.search } },
+      { providerName: { contains: filterOpts.search } },
+      { providerId: { contains: filterOpts.search } },
+    ];
+  }
+
+  const rows = await prisma.requestLog.findMany({
+    where: where as never,
+    orderBy: { ts: "desc" },
+  });
+
+  return rows.map(mapRequestLogRow);
+}
+
+/**
+ * Map a Prisma RequestLog row to the RecentLogRow shape.
+ */
+function mapRequestLogRow(r: {
+  id: bigint;
+  ts: bigint;
+  apiKeyId: string;
+  apiKeyName: string | null;
+  modelId: string;
+  providerId: string;
+  providerName: string | null;
+  status: number;
+  latencyMs: number;
+  ttftMs: number | null;
+  tpsOut: number | null;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  stream: boolean;
+  errorCode: string | null;
+  userAgent: string | null;
+  realModelId: string | null;
+  ip: string | null;
+  completed: boolean;
+  aborted: boolean;
+}): RecentLogRow {
+  return {
+    id: Number(r.id),
+    ts: Number(r.ts),
+    api_key_id: r.apiKeyId,
+    api_key_name: r.apiKeyName ?? "",
+    model_id: r.modelId,
+    provider_id: r.providerId,
+    provider_name: r.providerName,
+    status: r.status,
+    latency_ms: r.latencyMs,
+    ttft_ms: r.ttftMs,
+    tps_out: r.tpsOut,
+    input_tokens: r.inputTokens,
+    cached_input_tokens: r.cachedInputTokens,
+    output_tokens: r.outputTokens,
+    stream: r.stream ? 1 : 0,
+    error_code: r.errorCode,
+    user_agent: r.userAgent,
+    real_model_id: r.realModelId,
+    ip: r.ip,
+    completed: r.completed ? 1 : 0,
+    aborted: r.aborted ? 1 : 0,
   };
 }
 

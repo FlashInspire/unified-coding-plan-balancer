@@ -585,7 +585,7 @@ data/logs/YYYY-MM-DD.sqlite
 | `/provider-models` | ProviderModel 列表，按 model_id 分组展示候选与覆盖项                     |
 | `/api-keys`        | 签发、撤销、查看用量与额度                                               |
 | `/usage`           | 仪表盘：TTFT / TPS 折线、按 model / key / provider 的 token 与费用堆叠图 |
-| `/logs`            | 调用日志查询（接 `queryRouter`）                                         |
+| `/live`            | 实时调用日志（接 `queryRouter`，SSE 推送完整记录）                       |
 | `/quota`           | 各 Provider 当前 snapshot 与健康度，手动触发刷新                         |
 | `/settings`        | 修改密码、管理员账号                                                     |
 

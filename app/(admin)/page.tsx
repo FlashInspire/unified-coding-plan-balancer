@@ -319,44 +319,46 @@ export default function AdminHome() {
 
       {/* Navigation cards */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {([
-          {
-            href: "/providers",
-            label: t("dashboard.nav.providers"),
-            icon: Server,
-            desc: t("dashboard.nav.providersDesc"),
-          },
-          {
-            href: "/models",
-            label: t("dashboard.nav.models"),
-            icon: Layers,
-            desc: t("dashboard.nav.modelsDesc"),
-          },
-          {
-            href: "/api-keys",
-            label: t("dashboard.nav.apiKeys"),
-            icon: Key,
-            desc: t("dashboard.nav.apiKeysDesc"),
-          },
-          {
-            href: "/logs",
-            label: t("dashboard.nav.logs"),
-            icon: ScrollText,
-            desc: t("dashboard.nav.logsDesc"),
-          },
-          {
-            href: "/users",
-            label: t("dashboard.nav.users"),
-            icon: Users,
-            desc: t("dashboard.nav.usersDesc"),
-          },
-          {
-            href: "/settings",
-            label: t("dashboard.nav.settings"),
-            icon: Settings,
-            desc: t("dashboard.nav.settingsDesc"),
-          },
-        ] as const).map((card) => (
+        {(
+          [
+            {
+              href: "/providers",
+              label: t("dashboard.nav.providers"),
+              icon: Server,
+              desc: t("dashboard.nav.providersDesc"),
+            },
+            {
+              href: "/models",
+              label: t("dashboard.nav.models"),
+              icon: Layers,
+              desc: t("dashboard.nav.modelsDesc"),
+            },
+            {
+              href: "/api-keys",
+              label: t("dashboard.nav.apiKeys"),
+              icon: Key,
+              desc: t("dashboard.nav.apiKeysDesc"),
+            },
+            {
+              href: "/live",
+              label: t("dashboard.nav.live"),
+              icon: ScrollText,
+              desc: t("dashboard.nav.liveDesc"),
+            },
+            {
+              href: "/users",
+              label: t("dashboard.nav.users"),
+              icon: Users,
+              desc: t("dashboard.nav.usersDesc"),
+            },
+            {
+              href: "/settings",
+              label: t("dashboard.nav.settings"),
+              icon: Settings,
+              desc: t("dashboard.nav.settingsDesc"),
+            },
+          ] as const
+        ).map((card) => (
           <Link
             key={card.href}
             href={card.href}

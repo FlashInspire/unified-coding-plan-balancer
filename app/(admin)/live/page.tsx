@@ -4,20 +4,13 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { DataTable } from "../_components/data-table";
 import { LogFiltersBar, type LogFilters } from "./_components/log-filters";
 import type { RecentLogRow } from "@/lib/metrics/queryRouter";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, XCircle, Radio } from "lucide-react";
+import { Loader2, XCircle, Radio, ChevronDown } from "lucide-react";
 import { useT } from "../_components/i18n-provider";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   BarChart,
   Bar,
@@ -143,28 +136,23 @@ function LiveCharts({ logs }: { logs: RecentLogRow[] }) {
   );
 }
 
-const PAGE_SIZES = [25, 50, 100] as const;
+const PAGE_SIZE = 50;
 const RECONNECT_BASE_MS = 3_000;
 const RECONNECT_MAX_MS = 30_000;
-const REFETCH_DEBOUNCE_MS = 250;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function buildLogsUrl(
-  filters: LogFilters,
-  page: number,
-  pageSize: number,
-): string {
+function buildLiveUrl(filters: LogFilters, afterId?: number): string {
   const params = new URLSearchParams();
-  params.set("limit", String(pageSize));
-  params.set("offset", String(page * pageSize));
+  params.set("limit", String(PAGE_SIZE));
+  if (afterId != null) params.set("afterId", String(afterId));
   if (filters.search) params.set("search", filters.search);
   if (filters.status) params.set("status", filters.status);
   if (filters.modelId) params.set("modelId", filters.modelId);
   if (filters.providerId) params.set("providerId", filters.providerId);
-  return `/api/admin/logs?${params.toString()}`;
+  return `/api/admin/live?${params.toString()}`;
 }
 
 function buildStreamUrl(filters: LogFilters): string {
@@ -173,14 +161,14 @@ function buildStreamUrl(filters: LogFilters): string {
   if (filters.status) params.set("status", filters.status);
   if (filters.modelId) params.set("modelId", filters.modelId);
   if (filters.providerId) params.set("providerId", filters.providerId);
-  return `/api/admin/logs/stream?${params.toString()}`;
+  return `/api/admin/live/stream?${params.toString()}`;
 }
 
 function buildFiltersUrl(filters: LogFilters): string {
   const params = new URLSearchParams();
   if (filters.status) params.set("status", filters.status);
   if (filters.search) params.set("search", filters.search);
-  return `/api/admin/logs/filters?${params.toString()}`;
+  return `/api/admin/live/filters?${params.toString()}`;
 }
 
 const fmtDuration = (ms: number) => {
@@ -195,15 +183,15 @@ const fmtTokens = (v: number) =>
       ? `${(v / 1_000).toFixed(1)}K`
       : String(v);
 
-export default function LogsPage() {
+export default function LivePage() {
   const t = useT();
 
-  // ── Paginated data state ──
+  // ── Data state (cursor-based pagination) ──
   const [logs, setLogs] = useState<RecentLogRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(50);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
   // ── Filter state ──
   const [filters, setFilters] = useState<LogFilters>({
@@ -220,23 +208,30 @@ export default function LogsPage() {
 
   // ── Refs for stable callbacks ──
   const sseAbortRef = useRef<AbortController | null>(null);
-  const refetchAbortRef = useRef<AbortController | null>(null);
+  const fetchAbortRef = useRef<AbortController | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelay = useRef(RECONNECT_BASE_MS);
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectRef = useRef<() => void>(() => {});
-  const fetchPageRef = useRef<() => void>(() => {});
+  const logsRef = useRef<RecentLogRow[]>([]);
+  const filtersRef = useRef(filters);
 
-  // ── Fetch paginated data ──
-  const fetchPage = useCallback(async () => {
-    // Cancel any in-flight refetch
-    refetchAbortRef.current?.abort();
+  // Keep refs in sync
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
+  useEffect(() => {
+    logsRef.current = logs;
+  }, [logs]);
+
+  // ── Fetch initial page (no cursor) ──
+  const fetchInitial = useCallback(async () => {
+    fetchAbortRef.current?.abort();
     const ac = new AbortController();
-    refetchAbortRef.current = ac;
+    fetchAbortRef.current = ac;
 
     setLoading(true);
     try {
-      const resp = await fetch(buildLogsUrl(filters, page, pageSize), {
+      const resp = await fetch(buildLiveUrl(filtersRef.current), {
         signal: ac.signal,
       });
       if (!ac.signal.aborted && resp.ok) {
@@ -246,23 +241,44 @@ export default function LogsPage() {
         };
         setLogs(json.data);
         setTotal(json.total);
+        setHasMore(json.data.length >= PAGE_SIZE);
       }
     } catch {
       // Aborted or network error — ignore
     } finally {
       if (!ac.signal.aborted) setLoading(false);
     }
-  }, [filters, page, pageSize]);
+  }, []);
 
-  // Keep fetchPageRef current
-  useEffect(() => {
-    fetchPageRef.current = fetchPage;
-  }, [fetchPage]);
+  // ── Fetch more (cursor-based) ──
+  const fetchMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    const lastId = logsRef.current[logsRef.current.length - 1]?.id;
+    if (lastId == null) return;
+
+    setLoadingMore(true);
+    try {
+      const resp = await fetch(buildLiveUrl(filtersRef.current, lastId));
+      if (resp.ok) {
+        const json = (await resp.json()) as {
+          data: RecentLogRow[];
+          total: number;
+        };
+        setLogs((prev) => [...prev, ...json.data]);
+        setTotal(json.total);
+        setHasMore(json.data.length >= PAGE_SIZE);
+      }
+    } catch {
+      // Ignore
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore]);
 
   // ── Fetch filter metadata ──
   const fetchFilterOptions = useCallback(async () => {
     try {
-      const resp = await fetch(buildFiltersUrl(filters));
+      const resp = await fetch(buildFiltersUrl(filtersRef.current));
       if (resp.ok) {
         const json = (await resp.json()) as {
           modelIds: string[];
@@ -274,10 +290,9 @@ export default function LogsPage() {
     } catch {
       // Best-effort
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.status, filters.search]);
+  }, []);
 
-  // ── SSE connection (notification-only) ──
+  // ── SSE connection (pushes full records) ──
   const connect = useCallback(() => {
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);
@@ -288,7 +303,7 @@ export default function LogsPage() {
     sseAbortRef.current = ac;
     setConnected(false);
 
-    const url = buildStreamUrl(filters);
+    const url = buildStreamUrl(filtersRef.current);
 
     void (async () => {
       try {
@@ -310,17 +325,24 @@ export default function LogsPage() {
             const line = part.trim();
             if (!line.startsWith("data:")) continue;
             try {
-              const payload = JSON.parse(line.slice(5).trim()) as {
-                type?: "change" | "heartbeat";
-              };
-              if (payload.type === "change") {
-                // Debounce refetch to avoid hammering on rapid changes
-                if (debounceTimerRef.current)
-                  clearTimeout(debounceTimerRef.current);
-                debounceTimerRef.current = setTimeout(() => {
-                  fetchPageRef.current();
-                  fetchFilterOptions();
-                }, REFETCH_DEBOUNCE_MS);
+              const payload = JSON.parse(line.slice(5).trim()) as
+                | { type: "record"; data: RecentLogRow }
+                | { type: "heartbeat" };
+              if (payload.type === "record") {
+                const row = payload.data;
+                setLogs((prev) => {
+                  const idx = prev.findIndex((r) => r.id === row.id);
+                  if (idx >= 0) {
+                    // Update existing record in place
+                    const next = [...prev];
+                    next[idx] = row;
+                    return next;
+                  }
+                  // New record → prepend (newest first)
+                  return [row, ...prev];
+                });
+                // Refresh filter options periodically on new data
+                fetchFilterOptions();
               }
               // heartbeat → no-op (connection alive)
             } catch {
@@ -348,34 +370,19 @@ export default function LogsPage() {
     connectRef.current = connect;
   }, [connect]);
 
-  // ── Reset page on filter change ──
+  // ── Fetch initial + filters + connect SSE on mount / filter change ──
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPage(0);
-  }, [filters]);
-
-  // ── Fetch page + filters + connect SSE when deps change ──
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchPage();
+    fetchInitial();
     fetchFilterOptions();
     connect();
     return () => {
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       sseAbortRef.current?.abort();
-      refetchAbortRef.current?.abort();
+      fetchAbortRef.current?.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, page, pageSize]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPage(0);
-  }, [pageSize]);
-
-  // ── Derived ──
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  }, [filters]);
 
   // ── Live elapsed timer for in-flight rows ──
   const [now, setNow] = useState(() => Date.now());
@@ -389,7 +396,7 @@ export default function LogsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-sm font-semibold">{t("page.logs.title")}</h1>
+        <h1 className="text-sm font-semibold">{t("page.live.title")}</h1>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Radio
             className={cn(
@@ -399,7 +406,9 @@ export default function LogsPage() {
                 : "text-muted-foreground",
             )}
           />
-          <span>{connected ? t("logs.live") : t("common.loading")}</span>
+          <span>
+            {connected ? t("live.status.connected") : t("common.loading")}
+          </span>
         </div>
       </div>
 
@@ -407,7 +416,7 @@ export default function LogsPage() {
         filters={filters}
         onChange={setFilters}
         onRefresh={() => {
-          fetchPage();
+          fetchInitial();
           fetchFilterOptions();
           connect();
         }}
@@ -427,9 +436,9 @@ export default function LogsPage() {
       ) : (
         <>
           <div className="text-xs text-muted-foreground">
-            {total === 0
+            {logs.length === 0
               ? t("table.noData")
-              : `Showing ${page * pageSize + 1}–${Math.min((page + 1) * pageSize, total)} of ${total} logs`}
+              : `${logs.length} of ${total} logs`}
           </div>
           <DataTable
             idKey="id"
@@ -439,62 +448,62 @@ export default function LogsPage() {
               <div className="grid grid-cols-3 gap-3 text-xs">
                 <div>
                   <span className="text-muted-foreground">
-                    {t("logs.detail.stream")}{" "}
+                    {t("live.detail.stream")}{" "}
                   </span>
                   {r.stream ? "✓" : "✗"}
                 </div>
                 <div>
                   <span className="text-muted-foreground">
-                    {t("logs.detail.ttft")}{" "}
+                    {t("live.detail.ttft")}{" "}
                   </span>
                   {r.ttft_ms == null ? "—" : `${r.ttft_ms}ms`}
                 </div>
                 <div>
                   <span className="text-muted-foreground">
-                    {t("logs.detail.inTokens")}{" "}
+                    {t("live.detail.inTokens")}{" "}
                   </span>
                   {String(r.input_tokens ?? "")}
                 </div>
                 <div>
                   <span className="text-muted-foreground">
-                    {t("logs.detail.outTokens")}{" "}
+                    {t("live.detail.outTokens")}{" "}
                   </span>
                   {String(r.output_tokens ?? "")}
                 </div>
                 <div>
                   <span className="text-muted-foreground">
-                    {t("logs.detail.outTps")}{" "}
+                    {t("live.detail.outTps")}{" "}
                   </span>
                   {r.tps_out == null ? "—" : `${Number(r.tps_out).toFixed(1)}`}
                 </div>
                 <div>
                   <span className="text-muted-foreground">
-                    {t("logs.detail.userAgent")}{" "}
+                    {t("live.detail.userAgent")}{" "}
                   </span>
                   {r.user_agent ? String(r.user_agent).slice(0, 60) : "—"}
                 </div>
                 <div>
                   <span className="text-muted-foreground">
-                    {t("logs.detail.realModel")}{" "}
+                    {t("live.detail.realModel")}{" "}
                   </span>
                   {r.real_model_id ? String(r.real_model_id) : "—"}
                 </div>
                 <div>
                   <span className="text-muted-foreground">
-                    {t("logs.detail.cachedIn")}{" "}
+                    {t("live.detail.cachedIn")}{" "}
                   </span>
                   {String(r.cached_input_tokens ?? "")}
                 </div>
                 <div>
                   <span className="text-muted-foreground">
-                    {t("logs.detail.ip")}{" "}
+                    {t("live.detail.ip")}{" "}
                   </span>
                   {r.ip ? String(r.ip) : "—"}
                 </div>
                 {!!r.error_code && (
                   <div className="col-span-3">
                     <span className="text-muted-foreground">
-                      {t("logs.detail.error")}{" "}
+                      {t("live.detail.error")}{" "}
                     </span>
                     <span className="text-destructive">
                       {String(r.error_code)}
@@ -507,7 +516,7 @@ export default function LogsPage() {
             columns={[
               {
                 key: "ts",
-                label: t("logs.table.time"),
+                label: t("live.table.time"),
                 className: "w-[180px]",
                 render: (r) => (
                   <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
@@ -522,7 +531,7 @@ export default function LogsPage() {
               },
               {
                 key: "api_key_name",
-                label: t("logs.table.key"),
+                label: t("live.table.key"),
                 className: "w-[180px]",
                 render: (r) => (
                   <span className="font-mono text-xs truncate block">
@@ -532,8 +541,8 @@ export default function LogsPage() {
               },
               {
                 key: "model_id",
-                label: t("logs.table.model"),
-                className: "w-[130px]",
+                label: t("live.table.model"),
+                className: "w-[180px]",
               },
               {
                 key: "provider_name",
@@ -543,7 +552,7 @@ export default function LogsPage() {
               },
               {
                 key: "status",
-                label: t("logs.table.status"),
+                label: t("live.table.status"),
                 className: "w-[70px]",
                 render: (r) => {
                   const s = Number(r.status);
@@ -581,7 +590,7 @@ export default function LogsPage() {
               },
               {
                 key: "latency_ms",
-                label: t("logs.table.latency"),
+                label: t("live.table.latency"),
                 className: "w-[75px]",
                 render: (r) => {
                   if (!r.completed && !r.aborted) {
@@ -600,7 +609,7 @@ export default function LogsPage() {
               },
               {
                 key: "input_tokens",
-                label: t("logs.table.inTokens"),
+                label: t("live.table.inTokens"),
                 className: "w-[55px] text-right",
                 render: (r) => (
                   <span className="text-xs tabular-nums">
@@ -610,7 +619,7 @@ export default function LogsPage() {
               },
               {
                 key: "cached_input_tokens",
-                label: t("logs.table.cachedTokens"),
+                label: t("live.table.cachedTokens"),
                 className: "w-[60px] text-right",
                 render: (r) => (
                   <span className="text-xs tabular-nums">
@@ -620,7 +629,7 @@ export default function LogsPage() {
               },
               {
                 key: "output_tokens",
-                label: t("logs.table.outTokens"),
+                label: t("live.table.outTokens"),
                 className: "w-[55px] text-right",
                 render: (r) => (
                   <span className="text-xs tabular-nums">
@@ -630,7 +639,7 @@ export default function LogsPage() {
               },
               {
                 key: "ttft_ms",
-                label: t("logs.table.ttft"),
+                label: t("live.table.ttft"),
                 className: "w-[70px]",
                 render: (r) => (
                   <span className="text-xs tabular-nums">
@@ -653,72 +662,29 @@ export default function LogsPage() {
             ]}
           />
 
-          <div className="flex items-center justify-between pt-1">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Per page:</span>
-              <select
-                value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
-                className="h-7 rounded border border-input bg-background px-1.5 text-xs"
+          <div className="flex justify-center py-2">
+            {hasMore ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchMore}
+                disabled={loadingMore}
+                className="gap-1.5 text-xs"
               >
-                {PAGE_SIZES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setPage((p) => Math.max(0, p - 1));
-                    }}
-                    className={
-                      page === 0 ? "pointer-events-none opacity-50" : ""
-                    }
-                  />
-                </PaginationItem>
-                {Array.from({ length: Math.min(totalPages, 7) }).map((_, i) => {
-                  let pageNum: number;
-                  if (totalPages <= 7) pageNum = i;
-                  else if (page < 4) pageNum = i;
-                  else if (page > totalPages - 5) pageNum = totalPages - 7 + i;
-                  else pageNum = page - 3 + i;
-                  return (
-                    <PaginationItem key={pageNum}>
-                      <PaginationLink
-                        href="#"
-                        isActive={pageNum === page}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setPage(pageNum);
-                        }}
-                      >
-                        {pageNum + 1}
-                      </PaginationLink>
-                    </PaginationItem>
-                  );
-                })}
-                <PaginationItem>
-                  <PaginationNext
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setPage((p) => Math.min(totalPages - 1, p + 1));
-                    }}
-                    className={
-                      page >= totalPages - 1
-                        ? "pointer-events-none opacity-50"
-                        : ""
-                    }
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
+                {loadingMore ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                )}
+                {loadingMore ? t("common.loading") : t("live.loadMore")}
+              </Button>
+            ) : (
+              logs.length > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {t("live.allLoaded")}
+                </span>
+              )
+            )}
           </div>
         </>
       )}

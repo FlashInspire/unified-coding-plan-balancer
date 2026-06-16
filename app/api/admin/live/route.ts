@@ -7,6 +7,7 @@ import { apiKeyRepo } from "@/lib/repositories/apiKeyRepo";
 const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(1000).optional().default(100),
   offset: z.coerce.number().int().min(0).optional().default(0),
+  afterId: z.coerce.number().int().optional(),
   days: z.coerce.number().int().min(1).max(30).optional().default(2),
   apiKeyId: z.string().optional(),
   modelId: z.string().optional(),
@@ -38,6 +39,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const result = await recentLogs({
     limit: q.limit,
     offset: q.offset,
+    afterId: q.afterId,
     days: q.days,
     apiKeyId: q.apiKeyId,
     apiKeyIds,
