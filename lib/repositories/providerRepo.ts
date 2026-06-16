@@ -46,18 +46,39 @@ export interface ProviderPatch {
   quotaRunningOut?: boolean;
 }
 
+/** Convert Prisma Provider (with BigInt quota) to ProviderRow (number-based for JSON serialization). */
+function mapProviderRow(
+  r: Omit<ProviderRow, "rollingQuota" | "weekQuota" | "monthQuota"> & {
+    rollingQuota: bigint | null;
+    weekQuota: bigint | null;
+    monthQuota: bigint | null;
+  },
+): ProviderRow {
+  return {
+    ...r,
+    rollingQuota: r.rollingQuota != null ? Number(r.rollingQuota) : null,
+    weekQuota: r.weekQuota != null ? Number(r.weekQuota) : null,
+    monthQuota: r.monthQuota != null ? Number(r.monthQuota) : null,
+  };
+}
+
 export const providerRepo = {
   async list(): Promise<ProviderRow[]> {
-    return prisma.provider.findMany({ orderBy: { createdAt: "asc" } });
+    const rows = await prisma.provider.findMany({
+      orderBy: { createdAt: "asc" },
+    });
+    return rows.map(mapProviderRow);
   },
   async listEnabled(): Promise<ProviderRow[]> {
-    return prisma.provider.findMany({ where: { enabled: true } });
+    const rows = await prisma.provider.findMany({ where: { enabled: true } });
+    return rows.map(mapProviderRow);
   },
   async findById(id: string): Promise<ProviderRow | null> {
-    return prisma.provider.findUnique({ where: { id } });
+    const row = await prisma.provider.findUnique({ where: { id } });
+    return row ? mapProviderRow(row) : null;
   },
   async create(input: ProviderInput): Promise<ProviderRow> {
-    return prisma.provider.create({
+    const row = await prisma.provider.create({
       data: {
         id: input.id,
         name: input.name,
@@ -66,9 +87,10 @@ export const providerRepo = {
         baseUrlAnthropic: input.baseUrlAnthropic ?? null,
         apiKeyAnthropic: input.apiKeyAnthropic ?? null,
         headersTemplate: JSON.stringify(input.headersTemplate ?? {}),
-        rollingQuota: input.rollingQuota ?? null,
-        weekQuota: input.weekQuota ?? null,
-        monthQuota: input.monthQuota ?? null,
+        rollingQuota:
+          input.rollingQuota != null ? BigInt(input.rollingQuota) : null,
+        weekQuota: input.weekQuota != null ? BigInt(input.weekQuota) : null,
+        monthQuota: input.monthQuota != null ? BigInt(input.monthQuota) : null,
         rollingQuotaUsed: input.rollingQuotaUsed ?? 0,
         weekQuotaUsed: input.weekQuotaUsed ?? 0,
         monthQuotaUsed: input.monthQuotaUsed ?? 0,
@@ -78,9 +100,10 @@ export const providerRepo = {
         quotaRunningOut: input.quotaRunningOut ?? false,
       },
     });
+    return mapProviderRow(row);
   },
   async update(id: string, patch: ProviderPatch): Promise<ProviderRow> {
-    return prisma.provider.update({
+    const row = await prisma.provider.update({
       where: { id },
       data: {
         ...(patch.name !== undefined ? { name: patch.name } : {}),
@@ -100,13 +123,22 @@ export const providerRepo = {
           ? { headersTemplate: JSON.stringify(patch.headersTemplate) }
           : {}),
         ...(patch.rollingQuota !== undefined
-          ? { rollingQuota: patch.rollingQuota }
+          ? {
+              rollingQuota:
+                patch.rollingQuota != null ? BigInt(patch.rollingQuota) : null,
+            }
           : {}),
         ...(patch.weekQuota !== undefined
-          ? { weekQuota: patch.weekQuota }
+          ? {
+              weekQuota:
+                patch.weekQuota != null ? BigInt(patch.weekQuota) : null,
+            }
           : {}),
         ...(patch.monthQuota !== undefined
-          ? { monthQuota: patch.monthQuota }
+          ? {
+              monthQuota:
+                patch.monthQuota != null ? BigInt(patch.monthQuota) : null,
+            }
           : {}),
         ...(patch.rollingQuotaUsed !== undefined
           ? { rollingQuotaUsed: patch.rollingQuotaUsed }
@@ -147,6 +179,7 @@ export const providerRepo = {
           : {}),
       },
     });
+    return mapProviderRow(row);
   },
   async delete(id: string): Promise<void> {
     await prisma.provider.delete({ where: { id } });

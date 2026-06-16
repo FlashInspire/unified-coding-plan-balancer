@@ -1,8 +1,12 @@
 /**
- * GET /api/admin/logs/stream — Server-Sent Events endpoint for live log updates.
+ * GET /api/admin/logs/stream — Server-Sent Events notification endpoint.
  *
- * On connect, sends the most recent 50 log entries from the last 30 seconds,
- * then pushes new entries every 5 seconds until the client disconnects.
+ * Does NOT send log data. Instead, polls every 5 seconds and emits:
+ *   { type: "change" }  — when new logs match the current filter context
+ *   { type: "heartbeat" } — keep-alive when nothing changed
+ *
+ * The client should treat "change" as a signal to re-fetch from the
+ * paginated REST endpoint (GET /api/admin/logs).
  *
  * Query params (same as GET /api/admin/logs):
  *   modelId    = string (optional)
@@ -17,8 +21,6 @@ import { recentLogs } from "@/lib/metrics/queryRouter";
 import { apiKeyRepo } from "@/lib/repositories/apiKeyRepo";
 
 const POLL_INTERVAL_MS = 5_000;
-const INITIAL_WINDOW_MS = 30_000;
-const BATCH_LIMIT = 50;
 
 const querySchema = z.object({
   modelId: z.string().optional(),
@@ -41,7 +43,6 @@ export async function GET(req: NextRequest): Promise<Response> {
   if (!isAdmin) {
     apiKeyIds = await apiKeyRepo.findIdsByOwner(session.user.id);
     if (apiKeyIds.length === 0) {
-      // Return empty stream that closes immediately
       const empty = new ReadableStream({
         start(c) {
           c.close();
@@ -70,37 +71,15 @@ export async function GET(req: NextRequest): Promise<Response> {
         }
       };
 
-      // Initial batch: last 30s of logs
-      let lastSeenTs = Date.now() - INITIAL_WINDOW_MS;
-      try {
-        const initial = await recentLogs({
-          from: lastSeenTs,
-          limit: BATCH_LIMIT,
-          modelId: q.modelId,
-          providerId: q.providerId,
-          status: q.status,
-          search: q.search,
-          ...(apiKeyIds ? { apiKeyIds } : {}),
-        });
-        if (initial.rows.length > 0) {
-          // Advance cursor past the newest row we just sent
-          const maxTs = initial.rows.reduce(
-            (m, r) => Math.max(m, Number(r.ts)),
-            lastSeenTs,
-          );
-          lastSeenTs = maxTs;
-          send({ rows: initial.rows });
-        }
-      } catch {
-        // Best-effort
-      }
+      // Track the latest timestamp seen so we only emit "change" for genuinely new data.
+      let lastSeenTs = Date.now();
 
       // Poll for new logs every POLL_INTERVAL_MS
       const interval = setInterval(async () => {
         try {
           const result = await recentLogs({
             from: lastSeenTs,
-            limit: BATCH_LIMIT,
+            limit: 1,
             modelId: q.modelId,
             providerId: q.providerId,
             status: q.status,
@@ -108,15 +87,10 @@ export async function GET(req: NextRequest): Promise<Response> {
             ...(apiKeyIds ? { apiKeyIds } : {}),
           });
           if (result.rows.length > 0) {
-            const maxTs = result.rows.reduce(
-              (m, r) => Math.max(m, Number(r.ts)),
-              lastSeenTs,
-            );
-            lastSeenTs = maxTs;
-            send({ rows: result.rows });
+            lastSeenTs = Number(result.rows[0].ts);
+            send({ type: "change" });
           } else {
-            // Heartbeat to keep the connection alive
-            send({ heartbeat: true });
+            send({ type: "heartbeat" });
           }
         } catch {
           // Best-effort

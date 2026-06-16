@@ -15,9 +15,9 @@ interface PendingDimensions {
 
 /** Cached quota info for fast pre-checks. */
 export interface UserQuotaInfo {
-  rollingQuota: number | null;
-  weekQuota: number | null;
-  monthQuota: number | null;
+  rollingQuota: bigint | null;
+  weekQuota: bigint | null;
+  monthQuota: bigint | null;
   // Current DB values (per-dimension)
   rollingInputTokensUsed: number;
   rollingCachedReadTokensUsed: number;
@@ -121,28 +121,31 @@ class UserDimensionBuffer {
 
     // Check each dimension's combined weighted total
     // Rolling
-    if (info.rollingQuota != null && info.rollingQuota > 0) {
+    if (info.rollingQuota != null && info.rollingQuota > 0n) {
       const dbFee =
         info.rollingInputTokensUsed * info.quotaMultiplierInput +
         info.rollingCachedReadTokensUsed * info.quotaMultiplierCachedRead +
         info.rollingOutputTokensUsed * info.quotaMultiplierOutput;
-      if (dbFee + pendingFee + incomingFee >= info.rollingQuota) return true;
+      if (dbFee + pendingFee + incomingFee >= Number(info.rollingQuota))
+        return true;
     }
     // Week
-    if (info.weekQuota != null && info.weekQuota > 0) {
+    if (info.weekQuota != null && info.weekQuota > 0n) {
       const dbFee =
         info.weekInputTokensUsed * info.quotaMultiplierInput +
         info.weekCachedReadTokensUsed * info.quotaMultiplierCachedRead +
         info.weekOutputTokensUsed * info.quotaMultiplierOutput;
-      if (dbFee + pendingFee + incomingFee >= info.weekQuota) return true;
+      if (dbFee + pendingFee + incomingFee >= Number(info.weekQuota))
+        return true;
     }
     // Month
-    if (info.monthQuota != null && info.monthQuota > 0) {
+    if (info.monthQuota != null && info.monthQuota > 0n) {
       const dbFee =
         info.monthInputTokensUsed * info.quotaMultiplierInput +
         info.monthCachedReadTokensUsed * info.quotaMultiplierCachedRead +
         info.monthOutputTokensUsed * info.quotaMultiplierOutput;
-      if (dbFee + pendingFee + incomingFee >= info.monthQuota) return true;
+      if (dbFee + pendingFee + incomingFee >= Number(info.monthQuota))
+        return true;
     }
 
     return false;

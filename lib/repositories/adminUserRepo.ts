@@ -83,6 +83,15 @@ export const adminUserRepo = {
     });
   },
 
+  /** Admin-only: reset a user's password without touching mustChangePassword. */
+  async adminResetPassword(id: string, plainPassword: string) {
+    const passwordHash = await hashPassword(plainPassword);
+    return prisma.adminUser.update({
+      where: { id },
+      data: { passwordHash },
+    });
+  },
+
   /** Self-edit: displayName, email, avatarUrl (no role change). */
   async updateProfile(
     id: string,
@@ -138,9 +147,13 @@ export const adminUserRepo = {
   ) {
     const data: Record<string, unknown> = {};
     if (quota.rollingQuota !== undefined)
-      data.rollingQuota = quota.rollingQuota;
-    if (quota.weekQuota !== undefined) data.weekQuota = quota.weekQuota;
-    if (quota.monthQuota !== undefined) data.monthQuota = quota.monthQuota;
+      data.rollingQuota =
+        quota.rollingQuota != null ? BigInt(quota.rollingQuota) : null;
+    if (quota.weekQuota !== undefined)
+      data.weekQuota = quota.weekQuota != null ? BigInt(quota.weekQuota) : null;
+    if (quota.monthQuota !== undefined)
+      data.monthQuota =
+        quota.monthQuota != null ? BigInt(quota.monthQuota) : null;
     if (quota.quotaMultiplierInput !== undefined)
       data.quotaMultiplierInput = quota.quotaMultiplierInput;
     if (quota.quotaMultiplierCachedRead !== undefined)

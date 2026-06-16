@@ -231,7 +231,7 @@ export async function resetTick(): Promise<ResetTickResult> {
 
       // Rolling — reset if past due, or backfill if resetAt is missing
       // quota = 0 or null means unlimited → skip scheduling
-      if (p.rollingQuota != null && p.rollingQuota > 0) {
+      if (p.rollingQuota != null && p.rollingQuota > 0n) {
         if (
           p.rollingQuotaResetAt &&
           p.rollingQuotaResetAt.getTime() <= nowTime
@@ -255,7 +255,7 @@ export async function resetTick(): Promise<ResetTickResult> {
       }
 
       // Weekly — reset if past due, or backfill if resetAt is missing
-      if (p.weekQuota != null && p.weekQuota > 0) {
+      if (p.weekQuota != null && p.weekQuota > 0n) {
         if (p.weekQuotaResetAt && p.weekQuotaResetAt.getTime() <= nowTime) {
           updates.weekQuotaUsed = 0;
           updates.weekCacheInputTokensUsed = 0;
@@ -268,7 +268,7 @@ export async function resetTick(): Promise<ResetTickResult> {
       }
 
       // Monthly — reset if past due, or backfill if resetAt is missing
-      if (p.monthQuota != null && p.monthQuota > 0) {
+      if (p.monthQuota != null && p.monthQuota > 0n) {
         if (p.monthQuotaResetAt && p.monthQuotaResetAt.getTime() <= nowTime) {
           updates.monthQuotaUsed = 0;
           updates.monthCacheInputTokensUsed = 0;
@@ -343,7 +343,7 @@ export async function resetTick(): Promise<ResetTickResult> {
       const updates: Record<string, unknown> = {};
       let anyReset = false;
 
-      if (u.rollingQuota != null && u.rollingQuota > 0) {
+      if (u.rollingQuota != null && u.rollingQuota > 0n) {
         if (
           u.rollingQuotaResetAt &&
           u.rollingQuotaResetAt.getTime() <= nowTime
@@ -370,7 +370,7 @@ export async function resetTick(): Promise<ResetTickResult> {
         }
       }
 
-      if (u.weekQuota != null && u.weekQuota > 0) {
+      if (u.weekQuota != null && u.weekQuota > 0n) {
         if (u.weekQuotaResetAt && u.weekQuotaResetAt.getTime() <= nowTime) {
           Object.assign(updates, {
             weekInputTokensUsed: 0,
@@ -392,7 +392,7 @@ export async function resetTick(): Promise<ResetTickResult> {
         }
       }
 
-      if (u.monthQuota != null && u.monthQuota > 0) {
+      if (u.monthQuota != null && u.monthQuota > 0n) {
         if (u.monthQuotaResetAt && u.monthQuotaResetAt.getTime() <= nowTime) {
           Object.assign(updates, {
             monthInputTokensUsed: 0,

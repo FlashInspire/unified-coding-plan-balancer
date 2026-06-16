@@ -148,17 +148,24 @@ async function with429Probe<T>(
 }
 
 /**
- * Streaming variant: peek the first chunk from an async generator, retrying
- * on 429 up to RUNNING_OUT_PROBE_TIMES times. On success, returns a new
- * generator that yields the peeked chunk first, then delegates to the rest.
+ * Streaming variant: peek the first chunk from a fresh async generator,
+ * retrying on 429 up to RUNNING_OUT_PROBE_TIMES times. On success, returns
+ * a new generator that yields the peeked chunk first, then delegates to the
+ * rest.
+ *
+ * Accepts a factory function so each probe attempt creates a brand-new
+ * async generator. Passing an already-created generator would cause the
+ * second probe to receive an exhausted iterator (first.done === true),
+ * silently returning an empty stream with status 200 instead of throwing.
  */
 async function with429ProbeStream(
   providerId: string,
-  src: AsyncIterable<NormalizedChunk>,
+  factory: () => AsyncIterable<NormalizedChunk>,
 ): Promise<AsyncIterable<NormalizedChunk>> {
   let last429: UpstreamError | null = null;
   for (let probe = 0; probe < env.RUNNING_OUT_PROBE_TIMES; probe++) {
     try {
+      const src = factory();
       const iterator = src[Symbol.asyncIterator]();
       const first = await iterator.next();
       if (first.done) {
@@ -427,7 +434,11 @@ export async function dispatchChat(
         stream: false,
         status: 200,
         errorCode: null,
-        ttftMs: latency,
+        // Don't record TTFT for tool-call-only responses — the metric is
+        // meaningless when the model returns a structured call rather than text.
+        ttftMs: (resp.toolCalls as unknown[] | undefined)?.length
+          ? null
+          : latency,
         tpsOut:
           resp.usage.outputTokens > 0 && latency > 0
             ? (resp.usage.outputTokens / latency) * 1000
@@ -474,7 +485,8 @@ export async function dispatchChat(
         modelId,
         apiKeyId: ctx.apiKeyId,
         inputTokens: resp.usage.inputTokens,
-        cachedInputTokens: resp.usage.cachedReadTokens + resp.usage.cacheWriteTokens,
+        cachedInputTokens:
+          resp.usage.cachedReadTokens + resp.usage.cacheWriteTokens,
         outputTokens: resp.usage.outputTokens,
         ttftMs: latency,
         tpsOut:
@@ -681,15 +693,16 @@ export async function dispatchChatStream(
       userAgent: ctx.userAgent,
     });
     try {
-      const src = adapter.chatStream(
-        resolveProvider(c.provider, apiModeOut),
-        req,
-        ctx.signal,
-      );
       // Peek first iteration with 429 probe: retry the same provider up to
       // RUNNING_OUT_PROBE_TIMES times before marking it Running out and
       // falling back to the next candidate.
-      const peeked = await with429ProbeStream(c.provider.id, src);
+      const peeked = await with429ProbeStream(c.provider.id, () =>
+        adapter.chatStream(
+          resolveProvider(c.provider, apiModeOut),
+          req,
+          ctx.signal,
+        ),
+      );
       const wrapped = wrapStream(peeked, {
         started,
         requestId,
@@ -774,7 +787,9 @@ function wrapStream(
       let aborted = false;
       try {
         for await (const chunk of src) {
-          if ((chunk.delta || chunk.toolCallsDelta != null) && ttft == null) {
+          // Only measure TTFT on actual text content. Tool-call-only responses
+          // don't generate text tokens, so TTFT would be misleading there.
+          if (chunk.delta && ttft == null) {
             ttft = Date.now() - ctx.started;
             // Immediately update the log row with TTFT so it's visible
             // before the stream completes.
@@ -1007,7 +1022,9 @@ export async function dispatchDirectChat(
       stream: false,
       status: 200,
       errorCode: null,
-      ttftMs: latency,
+      ttftMs: (resp.toolCalls as unknown[] | undefined)?.length
+        ? null
+        : latency,
       tpsOut:
         resp.usage.outputTokens > 0 && latency > 0
           ? (resp.usage.outputTokens / latency) * 1000
@@ -1054,7 +1071,8 @@ export async function dispatchDirectChat(
       modelId,
       apiKeyId: ctx.apiKeyId,
       inputTokens: resp.usage.inputTokens,
-      cachedInputTokens: resp.usage.cachedReadTokens + resp.usage.cacheWriteTokens,
+      cachedInputTokens:
+        resp.usage.cachedReadTokens + resp.usage.cacheWriteTokens,
       outputTokens: resp.usage.outputTokens,
       ttftMs: latency,
       tpsOut:
@@ -1169,12 +1187,13 @@ export async function dispatchDirectChatStream(
     userAgent: ctx.userAgent,
   });
   try {
-    const src = adapter.chatStream(
-      resolveProvider(c.provider, ctx.apiModeIn),
-      req,
-      ctx.signal,
+    const peeked = await with429ProbeStream(c.provider.id, () =>
+      adapter.chatStream(
+        resolveProvider(c.provider, ctx.apiModeIn),
+        req,
+        ctx.signal,
+      ),
     );
-    const peeked = await with429ProbeStream(c.provider.id, src);
     const wrapped = wrapStream(peeked, {
       started,
       requestId,

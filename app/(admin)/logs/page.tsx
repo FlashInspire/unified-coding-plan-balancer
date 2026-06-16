@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { DataTable } from "../_components/data-table";
 import { LogFiltersBar, type LogFilters } from "./_components/log-filters";
 import type { RecentLogRow } from "@/lib/metrics/queryRouter";
@@ -17,11 +17,155 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, XCircle, Radio } from "lucide-react";
 import { useT } from "../_components/i18n-provider";
 import { cn } from "@/lib/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from "recharts";
+
+// ---------------------------------------------------------------------------
+// Live Charts
+// ---------------------------------------------------------------------------
+
+const CHART_COLORS = [
+  "hsl(var(--primary))",
+  "#6366f1",
+  "#8b5cf6",
+  "#a855f7",
+  "#d946ef",
+  "#ec4899",
+  "#f43f5e",
+  "#f97316",
+  "#eab308",
+  "#22c55e",
+];
+
+function RankBarChart({
+  title,
+  data,
+}: {
+  title: string;
+  data: { name: string; count: number }[];
+}) {
+  if (data.length === 0) return null;
+  const chartHeight = Math.max(120, data.length * 28);
+  return (
+    <Card>
+      <CardHeader className="pb-1 pt-3 px-4">
+        <CardTitle className="text-xs font-medium text-muted-foreground">
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-2 pb-3">
+        <ResponsiveContainer width="100%" height={chartHeight}>
+          <BarChart
+            data={data}
+            layout="vertical"
+            margin={{ top: 0, right: 24, bottom: 0, left: 0 }}
+          >
+            <XAxis
+              type="number"
+              tick={{ fontSize: 10 }}
+              allowDecimals={false}
+            />
+            <YAxis
+              type="category"
+              dataKey="name"
+              tick={{ fontSize: 10 }}
+              width={110}
+            />
+            <Tooltip
+              formatter={(v) => [`${v} calls`, "Requests"]}
+              labelFormatter={(l) => String(l)}
+            />
+            <Bar dataKey="count" radius={[0, 3, 3, 0]} barSize={14}>
+              {data.map((_, i) => (
+                <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+
+function LiveCharts({ logs }: { logs: RecentLogRow[] }) {
+  const keyData = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of logs) {
+      const k = String(r.api_key_name ?? r.api_key_id ?? "—");
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return [...m.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([name, count]) => ({ name, count }));
+  }, [logs]);
+
+  const modelData = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of logs) {
+      const k = String(r.model_id ?? "—");
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return [...m.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([name, count]) => ({ name, count }));
+  }, [logs]);
+
+  const providerData = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of logs) {
+      const k = String(r.provider_name ?? r.provider_id ?? "—");
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return [...m.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([name, count]) => ({ name, count }));
+  }, [logs]);
+
+  if (logs.length === 0) return null;
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-3">
+      <RankBarChart title="Key Usage (current page)" data={keyData} />
+      <RankBarChart title="Model Usage (current page)" data={modelData} />
+      <RankBarChart title="Provider Usage (current page)" data={providerData} />
+    </div>
+  );
+}
 
 const PAGE_SIZES = [25, 50, 100] as const;
-const MAX_ROWS = 2_000;
 const RECONNECT_BASE_MS = 3_000;
 const RECONNECT_MAX_MS = 30_000;
+const REFETCH_DEBOUNCE_MS = 250;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function buildLogsUrl(
+  filters: LogFilters,
+  page: number,
+  pageSize: number,
+): string {
+  const params = new URLSearchParams();
+  params.set("limit", String(pageSize));
+  params.set("offset", String(page * pageSize));
+  if (filters.search) params.set("search", filters.search);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.modelId) params.set("modelId", filters.modelId);
+  if (filters.providerId) params.set("providerId", filters.providerId);
+  return `/api/admin/logs?${params.toString()}`;
+}
 
 function buildStreamUrl(filters: LogFilters): string {
   const params = new URLSearchParams();
@@ -32,53 +176,119 @@ function buildStreamUrl(filters: LogFilters): string {
   return `/api/admin/logs/stream?${params.toString()}`;
 }
 
+function buildFiltersUrl(filters: LogFilters): string {
+  const params = new URLSearchParams();
+  if (filters.status) params.set("status", filters.status);
+  if (filters.search) params.set("search", filters.search);
+  return `/api/admin/logs/filters?${params.toString()}`;
+}
+
+const fmtDuration = (ms: number) => {
+  if (ms >= 60_000) return `${(ms / 60_000).toFixed(1)}m`;
+  if (ms >= 10_000) return `${(ms / 1_000).toFixed(2)}s`;
+  return `${ms}ms`;
+};
+const fmtTokens = (v: number) =>
+  v >= 1_000_000
+    ? `${(v / 1_000_000).toFixed(1)}M`
+    : v >= 1_000
+      ? `${(v / 1_000).toFixed(1)}K`
+      : String(v);
+
 export default function LogsPage() {
   const t = useT();
 
+  // ── Paginated data state ──
   const [logs, setLogs] = useState<RecentLogRow[]>([]);
-  const [connected, setConnected] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
+
+  // ── Filter state ──
   const [filters, setFilters] = useState<LogFilters>({
     search: "",
     status: "",
     modelId: "",
     providerId: "",
   });
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [modelOptions, setModelOptions] = useState<string[]>([]);
+  const [providerOptions, setProviderOptions] = useState<string[]>([]);
 
+  // ── SSE connection state ──
+  const [connected, setConnected] = useState(false);
+
+  // ── Refs for stable callbacks ──
+  const sseAbortRef = useRef<AbortController | null>(null);
+  const refetchAbortRef = useRef<AbortController | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelay = useRef(RECONNECT_BASE_MS);
-  const abortRef = useRef<AbortController | null>(null);
-  const filtersRef = useRef(filters);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectRef = useRef<() => void>(() => {});
+  const fetchPageRef = useRef<() => void>(() => {});
 
-  // Keep filtersRef current without triggering a re-render
+  // ── Fetch paginated data ──
+  const fetchPage = useCallback(async () => {
+    // Cancel any in-flight refetch
+    refetchAbortRef.current?.abort();
+    const ac = new AbortController();
+    refetchAbortRef.current = ac;
+
+    setLoading(true);
+    try {
+      const resp = await fetch(buildLogsUrl(filters, page, pageSize), {
+        signal: ac.signal,
+      });
+      if (!ac.signal.aborted && resp.ok) {
+        const json = (await resp.json()) as {
+          data: RecentLogRow[];
+          total: number;
+        };
+        setLogs(json.data);
+        setTotal(json.total);
+      }
+    } catch {
+      // Aborted or network error — ignore
+    } finally {
+      if (!ac.signal.aborted) setLoading(false);
+    }
+  }, [filters, page, pageSize]);
+
+  // Keep fetchPageRef current
   useEffect(() => {
-    filtersRef.current = filters;
-  }, [filters]);
+    fetchPageRef.current = fetchPage;
+  }, [fetchPage]);
 
-  const mergeRows = useCallback((incoming: RecentLogRow[]) => {
-    setLogs((prev) => {
-      const existingIds = new Set(prev.map((r) => r.id));
-      const newRows = incoming.filter((r) => !existingIds.has(r.id));
-      if (newRows.length === 0) return prev;
-      const merged = [...newRows, ...prev];
-      return merged.length > MAX_ROWS ? merged.slice(0, MAX_ROWS) : merged;
-    });
-  }, []);
+  // ── Fetch filter metadata ──
+  const fetchFilterOptions = useCallback(async () => {
+    try {
+      const resp = await fetch(buildFiltersUrl(filters));
+      if (resp.ok) {
+        const json = (await resp.json()) as {
+          modelIds: string[];
+          providerIds: string[];
+        };
+        setModelOptions(json.modelIds);
+        setProviderOptions(json.providerIds);
+      }
+    } catch {
+      // Best-effort
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.status, filters.search]);
 
+  // ── SSE connection (notification-only) ──
   const connect = useCallback(() => {
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
     }
-    if (abortRef.current) abortRef.current.abort();
+    sseAbortRef.current?.abort();
     const ac = new AbortController();
-    abortRef.current = ac;
+    sseAbortRef.current = ac;
     setConnected(false);
 
-    const url = buildStreamUrl(filtersRef.current);
+    const url = buildStreamUrl(filters);
 
     void (async () => {
       try {
@@ -86,7 +296,6 @@ export default function LogsPage() {
         if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
         const reader = resp.body.getReader();
         setConnected(true);
-        setInitialLoading(false);
         reconnectDelay.current = RECONNECT_BASE_MS;
 
         const decoder = new TextDecoder();
@@ -102,11 +311,18 @@ export default function LogsPage() {
             if (!line.startsWith("data:")) continue;
             try {
               const payload = JSON.parse(line.slice(5).trim()) as {
-                rows?: RecentLogRow[];
-                heartbeat?: boolean;
+                type?: "change" | "heartbeat";
               };
-              if (payload.rows && payload.rows.length > 0)
-                mergeRows(payload.rows);
+              if (payload.type === "change") {
+                // Debounce refetch to avoid hammering on rapid changes
+                if (debounceTimerRef.current)
+                  clearTimeout(debounceTimerRef.current);
+                debounceTimerRef.current = setTimeout(() => {
+                  fetchPageRef.current();
+                  fetchFilterOptions();
+                }, REFETCH_DEBOUNCE_MS);
+              }
+              // heartbeat → no-op (connection alive)
             } catch {
               // malformed event — skip
             }
@@ -124,52 +340,51 @@ export default function LogsPage() {
         connectRef.current();
       }, reconnectDelay.current);
     })();
-  }, [mergeRows]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Keep connectRef current so the reconnect callback always calls the latest version
+  // Keep connectRef current
   useEffect(() => {
     connectRef.current = connect;
   }, [connect]);
 
+  // ── Reset page on filter change ──
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLogs([]);
     setPage(0);
-    setInitialLoading(true);
+  }, [filters]);
+
+  // ── Fetch page + filters + connect SSE when deps change ──
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchPage();
+    fetchFilterOptions();
     connect();
     return () => {
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      if (abortRef.current) abortRef.current.abort();
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      sseAbortRef.current?.abort();
+      refetchAbortRef.current?.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters]);
+  }, [filters, page, pageSize]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPage(0);
   }, [pageSize]);
 
-  const totalPages = Math.max(1, Math.ceil(logs.length / pageSize));
-  const pageRows = logs.slice(page * pageSize, (page + 1) * pageSize);
+  // ── Derived ──
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  const modelOptions = [...new Set(logs.map((r) => r.model_id))].sort();
-  const providerOptions = [
-    ...new Set(
-      logs.map((r) => r.provider_id ?? r.provider_name).filter(Boolean),
-    ),
-  ].sort() as string[];
-
-  const fmtDuration = (ms: number) => {
-    if (ms >= 60_000) return `${(ms / 60_000).toFixed(1)}m`;
-    if (ms >= 10_000) return `${(ms / 1_000).toFixed(2)}s`;
-    return `${ms}ms`;
-  };
-  const fmtTokens = (v: number) =>
-    v >= 1_000_000
-      ? `${(v / 1_000_000).toFixed(1)}M`
-      : v >= 1_000
-        ? `${(v / 1_000).toFixed(1)}K`
-        : String(v);
+  // ── Live elapsed timer for in-flight rows ──
+  const [now, setNow] = useState(() => Date.now());
+  const hasInFlight = logs.some((r) => !r.completed && !r.aborted);
+  useEffect(() => {
+    if (!hasInFlight) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [hasInFlight]);
 
   return (
     <div className="space-y-4">
@@ -192,17 +407,18 @@ export default function LogsPage() {
         filters={filters}
         onChange={setFilters}
         onRefresh={() => {
-          setLogs([]);
-          setPage(0);
-          setInitialLoading(true);
+          fetchPage();
+          fetchFilterOptions();
           connect();
         }}
-        loading={!connected && initialLoading}
+        loading={loading}
         modelOptions={modelOptions}
         providerOptions={providerOptions}
       />
 
-      {initialLoading ? (
+      <LiveCharts logs={logs} />
+
+      {loading && logs.length === 0 ? (
         <div className="space-y-2">
           {Array.from({ length: 8 }).map((_, i) => (
             <Skeleton key={i} className="h-7 w-full" />
@@ -211,9 +427,9 @@ export default function LogsPage() {
       ) : (
         <>
           <div className="text-xs text-muted-foreground">
-            {logs.length === 0
+            {total === 0
               ? t("table.noData")
-              : `Showing ${page * pageSize + 1}–${Math.min((page + 1) * pageSize, logs.length)} of ${logs.length} logs (live)`}
+              : `Showing ${page * pageSize + 1}–${Math.min((page + 1) * pageSize, total)} of ${total} logs`}
           </div>
           <DataTable
             idKey="id"
@@ -287,7 +503,7 @@ export default function LogsPage() {
                 )}
               </div>
             )}
-            data={pageRows as unknown as Record<string, unknown>[]}
+            data={logs as unknown as Record<string, unknown>[]}
             columns={[
               {
                 key: "ts",
@@ -367,13 +583,20 @@ export default function LogsPage() {
                 key: "latency_ms",
                 label: t("logs.table.latency"),
                 className: "w-[75px]",
-                render: (r) => (
-                  <span className="text-xs tabular-nums">
-                    {Number(r.status) === 0
-                      ? "—"
-                      : fmtDuration(Number(r.latency_ms))}
-                  </span>
-                ),
+                render: (r) => {
+                  if (!r.completed && !r.aborted) {
+                    return (
+                      <span className="text-xs tabular-nums text-primary">
+                        {fmtDuration(now - Number(r.ts))}
+                      </span>
+                    );
+                  }
+                  return (
+                    <span className="text-xs tabular-nums">
+                      {fmtDuration(Number(r.latency_ms))}
+                    </span>
+                  );
+                },
               },
               {
                 key: "input_tokens",

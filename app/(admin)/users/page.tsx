@@ -7,7 +7,7 @@ import { apiFetch } from "../_components/api";
 import { useT } from "../_components/i18n-provider";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Pencil } from "lucide-react";
+import { Pencil, KeyRound } from "lucide-react";
 
 interface UserRow {
   id: string;
@@ -42,6 +42,8 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editRow, setEditRow] = useState<UserRow | null>(null);
+  const [passwordRow, setPasswordRow] = useState<UserRow | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -66,7 +68,12 @@ export default function UsersPage() {
         <FormDialog
           title={t("users.dialog.addTitle")}
           triggerLabel={t("users.dialog.addTrigger")}
+          wide
           fields={[
+            {
+              type: "section" as const,
+              legend: t("users.section.basic"),
+            },
             {
               name: "username",
               label: t("users.form.username"),
@@ -124,7 +131,12 @@ export default function UsersPage() {
       {/* Edit modal */}
       <FormDialog
         title={`${t("users.dialog.editTitle")}: ${editRow?.username ?? ""}`}
+        wide
         fields={[
+          {
+            type: "section" as const,
+            legend: t("users.section.basic"),
+          },
           {
             name: "username",
             label: "Username",
@@ -156,15 +168,8 @@ export default function UsersPage() {
             type: "text" as const,
           },
           {
-            name: "password",
-            label: "New Password (leave blank to keep current)",
-            type: "text" as const,
-            placeholder: "••••••",
-          },
-          {
-            name: "mustChangePassword",
-            label: "Must Change Password",
-            type: "boolean" as const,
+            type: "section" as const,
+            legend: t("users.section.quotaBilling"),
           },
           {
             name: "rollingQuota",
@@ -215,7 +220,6 @@ export default function UsersPage() {
                 displayName: editRow.displayName ?? "",
                 email: editRow.email ?? "",
                 avatarUrl: editRow.avatarUrl ?? "",
-                mustChangePassword: editRow.mustChangePassword,
                 rollingQuota: editRow.rollingQuota ?? "",
                 weekQuota: editRow.weekQuota ?? "",
                 monthQuota: editRow.monthQuota ?? "",
@@ -230,9 +234,6 @@ export default function UsersPage() {
           setError(null);
           try {
             const body: Record<string, unknown> = {};
-            if (v.password) body.password = v.password;
-            if (v.mustChangePassword != null)
-              body.mustChangePassword = v.mustChangePassword;
             if (v.role && v.role !== editRow!.role) body.role = v.role;
             if (v.displayName !== undefined)
               body.displayName = v.displayName || null;
@@ -272,6 +273,52 @@ export default function UsersPage() {
               err instanceof Error ? err.message : "Failed to update user",
             );
           }
+        }}
+      />
+
+      {/* Change Password modal */}
+      <FormDialog
+        title={t("users.dialog.changePasswordTitle").replace(
+          "{name}",
+          passwordRow?.username ?? "",
+        )}
+        fields={[
+          {
+            name: "newPassword",
+            label: t("users.form.password"),
+            type: "text" as const,
+            required: true,
+            placeholder: "••••••",
+          },
+          {
+            name: "confirmPassword",
+            label: t("users.form.confirmPassword"),
+            type: "text" as const,
+            required: true,
+            placeholder: "••••••",
+          },
+        ]}
+        open={passwordRow != null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setPasswordRow(null);
+            setPasswordError(null);
+          }
+        }}
+        submitLabel={t("users.action.changePassword")}
+        onSubmit={async (v) => {
+          setPasswordError(null);
+          const newPw = String(v.newPassword ?? "");
+          const confirmPw = String(v.confirmPassword ?? "");
+          if (newPw !== confirmPw) {
+            throw new Error(t("users.password.mismatch"));
+          }
+          await apiFetch(`/api/admin/users/${passwordRow!.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ password: newPw }),
+          });
+          setPasswordRow(null);
+          await load();
         }}
       />
 
@@ -369,20 +416,65 @@ export default function UsersPage() {
             {
               key: "mustChangePassword",
               label: t("users.table.status"),
-              className: "w-[110px]",
+              className: "w-[140px]",
               render: (r) => {
                 const row = r as unknown as UserRow;
-                return row.mustChangePassword ? (
-                  <Badge
-                    variant="secondary"
-                    className="text-[10px] bg-amber-100 text-amber-800"
+                return (
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      setError(null);
+                      const newValue = !row.mustChangePassword;
+                      // Optimistic update
+                      setData((prev) =>
+                        prev.map((u) =>
+                          u.id === row.id
+                            ? { ...u, mustChangePassword: newValue }
+                            : u,
+                        ),
+                      );
+                      try {
+                        await apiFetch(`/api/admin/users/${row.id}`, {
+                          method: "PATCH",
+                          body: JSON.stringify({
+                            mustChangePassword: newValue,
+                          }),
+                        });
+                      } catch (err) {
+                        // Rollback
+                        setData((prev) =>
+                          prev.map((u) =>
+                            u.id === row.id
+                              ? { ...u, mustChangePassword: !newValue }
+                              : u,
+                          ),
+                        );
+                        setError(
+                          err instanceof Error
+                            ? err.message
+                            : "Failed to update status",
+                        );
+                      }
+                    }}
+                    className="inline-flex"
                   >
-                    {t("users.status.mustChange")}
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="text-[10px]">
-                    {t("users.status.active")}
-                  </Badge>
+                    {row.mustChangePassword ? (
+                      <Badge
+                        variant="secondary"
+                        className="text-[10px] bg-amber-100 text-amber-800 cursor-pointer hover:bg-amber-200"
+                      >
+                        {t("users.status.mustChange")}
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] cursor-pointer hover:bg-accent"
+                      >
+                        {t("users.status.active")}
+                      </Badge>
+                    )}
+                  </button>
                 );
               },
             },
@@ -449,16 +541,28 @@ export default function UsersPage() {
           actions={(row) => {
             const u = row as unknown as UserRow;
             return (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEditRow(u);
-                }}
-                className="inline-flex items-center justify-center h-7 w-7 rounded hover:bg-accent"
-                title="Edit"
-              >
-                <Pencil className="h-3 w-3" />
-              </button>
+              <div className="flex items-center gap-0.5">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditRow(u);
+                  }}
+                  className="inline-flex items-center justify-center h-7 w-7 rounded hover:bg-accent"
+                  title="Edit"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPasswordRow(u);
+                  }}
+                  className="inline-flex items-center justify-center h-7 w-7 rounded hover:bg-accent"
+                  title={t("users.action.changePassword")}
+                >
+                  <KeyRound className="h-3 w-3" />
+                </button>
+              </div>
             );
           }}
           onDelete={async (id) => {

@@ -100,9 +100,9 @@ describe("UserDimensionBuffer", () => {
 
     it("returns false when all quotas are unlimited (0)", () => {
       userDimensionBuffer.setQuotaCache("u1", {
-        rollingQuota: 0,
-        weekQuota: 0,
-        monthQuota: 0,
+        rollingQuota: 0n,
+        weekQuota: 0n,
+        monthQuota: 0n,
         ...zeroCounters,
         ...defaultMultipliers,
       });
@@ -113,7 +113,7 @@ describe("UserDimensionBuffer", () => {
 
     it("returns true when rolling quota would be exceeded", () => {
       userDimensionBuffer.setQuotaCache("u1", {
-        rollingQuota: 1000,
+        rollingQuota: 1000n,
         weekQuota: null,
         monthQuota: null,
         ...zeroCounters,
@@ -129,7 +129,7 @@ describe("UserDimensionBuffer", () => {
     it("returns true when week quota would be exceeded", () => {
       userDimensionBuffer.setQuotaCache("u1", {
         rollingQuota: null,
-        weekQuota: 5000,
+        weekQuota: 5000n,
         monthQuota: null,
         ...zeroCounters,
         weekOutputTokensUsed: 4900,
@@ -143,7 +143,7 @@ describe("UserDimensionBuffer", () => {
       userDimensionBuffer.setQuotaCache("u1", {
         rollingQuota: null,
         weekQuota: null,
-        monthQuota: 10000,
+        monthQuota: 10000n,
         ...zeroCounters,
         monthInputTokensUsed: 9999,
         ...defaultMultipliers,
@@ -155,7 +155,7 @@ describe("UserDimensionBuffer", () => {
 
     it("includes pending tokens in the check", () => {
       userDimensionBuffer.setQuotaCache("u1", {
-        rollingQuota: 1000,
+        rollingQuota: 1000n,
         weekQuota: null,
         monthQuota: null,
         ...zeroCounters,
@@ -171,9 +171,9 @@ describe("UserDimensionBuffer", () => {
 
     it("picks the tightest quota dimension", () => {
       userDimensionBuffer.setQuotaCache("u1", {
-        rollingQuota: 10000,
-        weekQuota: 2000,
-        monthQuota: 50000,
+        rollingQuota: 10000n,
+        weekQuota: 2000n,
+        monthQuota: 50000n,
         ...zeroCounters,
         weekInputTokensUsed: 1900,
         ...defaultMultipliers,
@@ -186,7 +186,7 @@ describe("UserDimensionBuffer", () => {
 
     it("applies multipliers to compute weighted fee", () => {
       userDimensionBuffer.setQuotaCache("u1", {
-        rollingQuota: 1000,
+        rollingQuota: 1000n,
         weekQuota: null,
         monthQuota: null,
         ...zeroCounters,
@@ -209,7 +209,7 @@ describe("UserDimensionBuffer", () => {
   describe("quota cache and getMultipliers", () => {
     it("setQuotaCache and clearQuotaCache work", () => {
       const info: UserQuotaInfo = {
-        rollingQuota: 100,
+        rollingQuota: 100n,
         weekQuota: null,
         monthQuota: null,
         ...zeroCounters,

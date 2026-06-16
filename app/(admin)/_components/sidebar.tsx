@@ -30,6 +30,12 @@ const NAV_ITEMS = [
     roles: ["admin", "user"],
   },
   {
+    href: "/logs",
+    labelKey: "nav.logs",
+    icon: ScrollText,
+    roles: ["admin", "user"],
+  },
+  {
     href: "/providers",
     labelKey: "nav.providers",
     icon: Server,
@@ -40,12 +46,6 @@ const NAV_ITEMS = [
     href: "/api-keys",
     labelKey: "nav.apiKeys",
     icon: Key,
-    roles: ["admin", "user"],
-  },
-  {
-    href: "/logs",
-    labelKey: "nav.logs",
-    icon: ScrollText,
     roles: ["admin", "user"],
   },
   {

@@ -28,6 +28,62 @@ export interface RecentLogRow {
   aborted: number;
 }
 
+/**
+ * Returns distinct model IDs and provider IDs available in request_log,
+ * scoped to the same filter context (apiKeyIds, search, status, time window).
+ * Used by the /api/admin/logs/filters endpoint to populate dropdown options
+ * independently of pagination.
+ */
+export async function recentLogFilters(
+  opts: {
+    days?: number;
+    apiKeyIds?: string[];
+    modelId?: string;
+    providerId?: string;
+    status?: "ok" | "error" | "inflight";
+    search?: string;
+  } = {},
+): Promise<{ modelIds: string[]; providerIds: string[] }> {
+  const days = opts.days ?? 2;
+  const from = Date.now() - days * 86_400_000;
+
+  const where: Record<string, unknown> = {};
+
+  if (opts.apiKeyIds && opts.apiKeyIds.length > 0) {
+    where.apiKeyId = { in: opts.apiKeyIds };
+  }
+  // We don't filter by modelId/providerId here — we want *all* available options.
+  if (opts.status === "ok") {
+    where.status = { gte: 200, lt: 400 };
+  } else if (opts.status === "error") {
+    where.OR = [{ status: { gte: 400 } }, { status: { gt: 0, lt: 200 } }];
+  } else if (opts.status === "inflight") {
+    where.status = 0;
+  }
+  if (opts.search) {
+    where.OR = [
+      { apiKeyName: { contains: opts.search } },
+      { modelId: { contains: opts.search } },
+      { providerName: { contains: opts.search } },
+      { providerId: { contains: opts.search } },
+    ];
+  }
+  where.ts = { gte: BigInt(from) };
+
+  const rows = await prisma.requestLog.findMany({
+    where: where as never,
+    select: { modelId: true, providerId: true },
+    distinct: ["modelId", "providerId"],
+    orderBy: { ts: "desc" },
+    take: 500,
+  });
+
+  const modelIds = [...new Set(rows.map((r) => r.modelId))].sort();
+  const providerIds = [...new Set(rows.map((r) => r.providerId))].sort();
+
+  return { modelIds, providerIds };
+}
+
 /** Returns the N most recent request_log rows. */
 export async function recentLogs(
   opts: {

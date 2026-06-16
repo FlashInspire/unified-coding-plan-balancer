@@ -36,7 +36,7 @@ export async function PATCH(
     const body = patchSchema.parse(await req.json());
 
     if (body.password) {
-      await adminUserRepo.updatePassword(id, body.password);
+      await adminUserRepo.adminResetPassword(id, body.password);
     }
     if (body.mustChangePassword != null) {
       await adminUserRepo.setMustChangePassword(id, body.mustChangePassword);

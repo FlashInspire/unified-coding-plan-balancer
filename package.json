@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "bundle": "next build && cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static && cp -r prisma .next/standalone/prisma && tar -czf deploy.tgz -C .next/standalone . && echo 'Packed deploy.tgz'",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
