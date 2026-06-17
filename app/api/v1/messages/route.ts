@@ -129,13 +129,17 @@ export async function POST(req: Request): Promise<Response> {
             );
           }
           try {
-            // Emit message_start only (no pre-opened content block).
-            for (const e of buildAnthropicStreamStart(
-              rawBody.model as string,
-            )) {
-              emit(e.event, e.data);
-            }
-
+            // Defer `message_start` until we either observe a usage chunk
+            // (same-protocol Anthropic yields one immediately on upstream
+            // message_start) or the first content delta arrives (cross-protocol
+            // OpenAI→Anthropic, where usage only comes on the terminal chunk).
+            // This way the client sees real input_tokens in message_start when
+            // available, while cross-protocol streams still emit message_start
+            // promptly (with 0) so the client isn't starved.
+            let messageStartSent = false;
+            let inputTokens = 0;
+            let cachedReadTokens = 0;
+            let cacheWriteTokens = 0;
             let outputTokens = 0;
             let finishReason = "end_turn";
 
@@ -146,11 +150,48 @@ export async function POST(req: Request): Promise<Response> {
             const toolCallToBlock = new Map<number, number>();
             const openBlockIndices: number[] = [];
 
+            const ensureMessageStart = () => {
+              if (messageStartSent) return;
+              messageStartSent = true;
+              for (const e of buildAnthropicStreamStart(
+                rawBody.model as string,
+                {
+                  inputTokens,
+                  cachedReadTokens,
+                  cacheWriteTokens,
+                  outputTokens,
+                },
+              )) {
+                emit(e.event, e.data);
+              }
+            };
+
             for await (const chunk of result.iterator) {
               // Check if the client has aborted before enqueueing more data.
               if (req.signal.aborted) break;
+
+              // Capture all 4 token dimensions from any usage chunk. Same-
+              // protocol Anthropic yields an early usage chunk (input tokens)
+              // before content; the terminal chunk carries output tokens.
+              if (chunk.usage) {
+                inputTokens = chunk.usage.inputTokens ?? inputTokens;
+                cachedReadTokens =
+                  chunk.usage.cachedReadTokens ?? cachedReadTokens;
+                cacheWriteTokens =
+                  chunk.usage.cacheWriteTokens ?? cacheWriteTokens;
+                outputTokens = chunk.usage.outputTokens ?? outputTokens;
+                // If this is an early usage-only chunk, emit message_start
+                // now so the client gets real input_tokens immediately.
+                ensureMessageStart();
+              }
+              if (chunk.finishReason) finishReason = chunk.finishReason;
+
               // Handle text delta — lazily open a text block on first delta.
               if (chunk.delta) {
+                // Make sure message_start has been emitted before any
+                // content_block_start (cross-protocol path where usage
+                // arrives only at stream end).
+                ensureMessageStart();
                 if (textBlockIndex === null) {
                   textBlockIndex = nextBlockIndex++;
                   openBlockIndices.push(textBlockIndex);
@@ -169,6 +210,7 @@ export async function POST(req: Request): Promise<Response> {
                 chunk.toolCallsDelta != null &&
                 Array.isArray(chunk.toolCallsDelta)
               ) {
+                ensureMessageStart();
                 for (const tc of chunk.toolCallsDelta as {
                   index: number;
                   id?: string;
@@ -196,11 +238,12 @@ export async function POST(req: Request): Promise<Response> {
                 }
               }
 
-              if (chunk.usage) outputTokens = chunk.usage.outputTokens;
-              if (chunk.finishReason) finishReason = chunk.finishReason;
-
               // Forward raw Anthropic events (thinking blocks, etc.) verbatim.
-              if (chunk.rawAnthropicEvent) {
+              // Skip any upstream message_start — we emit our own above.
+              if (
+                chunk.rawAnthropicEvent &&
+                chunk.rawAnthropicEvent.event !== "message_start"
+              ) {
                 emit(
                   chunk.rawAnthropicEvent.event,
                   chunk.rawAnthropicEvent.data,
@@ -208,10 +251,17 @@ export async function POST(req: Request): Promise<Response> {
               }
             }
 
+            // Safety net: if the stream produced no chunks at all, still emit
+            // message_start so the client receives a well-formed event sequence.
+            ensureMessageStart();
+
             for (const e of buildAnthropicStreamEnd({
               finishReason,
               outputTokens,
               openBlockIndices,
+              inputTokens,
+              cachedReadTokens,
+              cacheWriteTokens,
             })) {
               emit(e.event, e.data);
             }

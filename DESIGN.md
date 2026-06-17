@@ -422,8 +422,7 @@ export function getQuotaHandler(name: string): QuotaHandler {
 
 ### 5.5 刷新 Worker
 
-- 默认每 `QUOTA_REFRESH_INTERVAL_MS = 60000` 触发
-- 并发度可配, 默认 4
+- 由外部调度器每 60s 调用 `/api/cron` 触发
 - 单 Provider 连续失败 3 次 → `healthy = false`, 仅靠下一次成功恢复
 - 写入 `ProviderQuotaSnapshot`
 
@@ -504,7 +503,7 @@ export interface ProviderAdapter {
    ▼
 MetricsBuffer.push(record)              ← 内存队列, 容量阈值 5000
    ▼
-Flusher (interval = METRICS_FLUSH_INTERVAL_MS, default 1s)
+Flusher (driven by external /api/cron scheduler)
    ▼
 shardStore.openLog(date).transaction(... batch INSERT ...)
    ▼
@@ -631,15 +630,12 @@ ENTRYPOINT:
 
 ### 12.3 可选环境变量
 
-| 变量                        | 默认  | 说明                   |
-| --------------------------- | ----- | ---------------------- |
-| `LOG_RETENTION_DAYS`        | 30    | 调用明细保留天数       |
-| `STAT_RETENTION_MONTHS`     | 24    | 分钟聚合保留月数       |
-| `QUOTA_REFRESH_INTERVAL_MS` | 60000 | 配额刷新间隔           |
-| `METRICS_FLUSH_INTERVAL_MS` | 1000  | 指标 buffer flush 间隔 |
-| `METRICS_FLUSH_BATCH_SIZE`  | 500   | flush 触发阈值         |
-| `SQLITE_POOL_MAX`           | 16    | LRU 连接池上限         |
-| `QUOTA_REFRESH_CONCURRENCY` | 4     | 并行刷新 Provider 数   |
+| 变量                       | 默认 | 说明             |
+| -------------------------- | ---- | ---------------- |
+| `LOG_RETENTION_DAYS`       | 30   | 调用明细保留天数 |
+| `STAT_RETENTION_MONTHS`    | 24   | 分钟聚合保留月数 |
+| `METRICS_FLUSH_BATCH_SIZE` | 500  | flush 触发阈值   |
+| `SQLITE_POOL_MAX`          | 16   | LRU 连接池上限   |
 
 ### 12.4 必需挂卷
 

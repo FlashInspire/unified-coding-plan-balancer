@@ -273,32 +273,6 @@ model RequestLog {
 }
 
 // -----------------------------------------------------------------------------
-// UsageMinute — per-minute aggregated usage.
-// Replaces the sharded SQLite usage_minute tables.
-// -----------------------------------------------------------------------------
-model UsageMinute {
-  minute            Int // epoch minute
-  apiKeyId          String @map("api_key_id")
-  providerId        String @map("provider_id")
-  modelId           String @map("model_id")
-  requests          Int    @default(0)
-  requestsOk        Int    @default(0) @map("requests_ok")
-  requestsErr       Int    @default(0) @map("requests_err")
-  inputTokens       Int    @default(0) @map("input_tokens")
-  cachedInputTokens Int    @default(0) @map("cached_input_tokens")
-  outputTokens      Int    @default(0) @map("output_tokens")
-  ttftMsSum         Int    @default(0) @map("ttft_ms_sum")
-  ttftMsCount       Int    @default(0) @map("ttft_ms_count")
-  tpsOutSum         Float  @default(0) @map("tps_out_sum")
-  tpsOutCount       Int    @default(0) @map("tps_out_count")
-
-  @@id([minute, apiKeyId, providerId, modelId])
-  @@index([apiKeyId, minute])
-  @@index([modelId, minute])
-  @@map("usage_minute")
-}
-
-// -----------------------------------------------------------------------------
 // AggregateReport — pre-aggregated reports at hour/day/week/month granularity.
 // Dimensioned by (providerId, modelId, apiKeyId). Enables flexible queries
 // across any single dimension or combination.

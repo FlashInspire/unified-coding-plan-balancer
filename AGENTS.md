@@ -75,10 +75,19 @@
 │   ├── metrics/
 │   │   ├── buffer.ts             # MetricsBuffer (in-memory ring)
 │   │   ├── flusher.ts            # 批量写入 request_log (PostgreSQL)
-│   │   ├── aggregator.ts         # 分钟聚合 -> usage_minute
-│   │   ├── reportAggregator.ts   # 小时/日/周/月聚合 -> aggregate_report
+│   │   ├── liveReportUpdater.ts  # 每个请求实时增量写入 aggregate_report
+│   │   ├── reportAggregator.ts   # 仅 truncateToGranularity 工具函数
+│   │   ├── staleLogCleaner.ts    # 标记滞留 in-flight 日志为 aborted
 │   │   ├── archiver.ts           # 归档 + 清理 (deleteMany)
 │   │   └── queryRouter.ts        # 跨表查询 API
+│   ├── cron/                     # /api/cron 拆分后的独立任务
+│   │   ├── flush.task.ts
+│   │   ├── staleLogs.task.ts
+│   │   ├── userTokenFlush.task.ts
+│   │   ├── apiKeyTokenFlush.task.ts
+│   │   ├── quotaReset.task.ts
+│   │   ├── archive.task.ts
+│   │   └── ensureLatestReports.task.ts
 │   ├── repositories/             # Prisma 操作统一封装
 │   │   ├── providerRepo.ts
 │   │   ├── modelRepo.ts
@@ -86,7 +95,7 @@
 │   │   ├── apiKeyRepo.ts
 │   │   └── adminUserRepo.ts
 │   ├── workers/
-│   │   └── bootstrap.ts          # 启动时拉起 refresher/flusher/aggregator/archiver
+│   │   └── bootstrap.ts          # 启动期占位（实际周期任务在 /api/cron）
 │   └── utils/
 ├── prisma/
 │   ├── schema.prisma
@@ -125,7 +134,8 @@
 
 ### 4.3 指标 / 日志
 
-- `request_log` / `usage_minute` / `aggregate_report` 由 Prisma 管理，直接通过 Prisma Client 读写
+- `request_log` / `aggregate_report` 由 Prisma 管理，直接通过 Prisma Client 读写
+- `aggregate_report` 在每次请求成功/失败后由 `liveReportUpdater.updateLatestReports` 实时增量写入；`/api/cron` 不再扫 `request_log` 重新聚合，只负责把过期的 `latest=true` 行翻面
 - 所有读写可经 `lib/metrics/queryRouter.ts` 或直接用 Prisma
 - 业务代码禁止在请求路径上做同步阻塞操作
 
@@ -204,14 +214,14 @@ pnpm prisma generate
 
 ## 6. 测试要求
 
-| 模块                           | 必需测试                                                  |
-| ------------------------------ | --------------------------------------------------------- |
-| `lib/adapters/translate/`      | 单元测试覆盖 openai↔anthropic 双向，含流式 chunk 序列     |
-| `lib/routing/resolveParams.ts` | 表驱动测试覆盖三层优先级 + maxTokens 截断                 |
-| `lib/routing/dispatch.ts`      | 集成测试：首选失败 → fallback 成功；全部失败 → 502        |
-| `lib/quota/handlers/*`         | mock 上游 fetch 验证归一化输出                            |
-| `lib/metrics/queryRouter.ts`   | 查询 API 覆盖 recentLogs / usageInMonth / aggregateReport |
-| `lib/auth/apiKey.ts`           | 无 key / 无效 key / 已停用 key 三种用例                   |
+| 模块                           | 必需测试                                                      |
+| ------------------------------ | ------------------------------------------------------------- |
+| `lib/adapters/translate/`      | 单元测试覆盖 openai↔anthropic 双向，含流式 chunk 序列         |
+| `lib/routing/resolveParams.ts` | 表驱动测试覆盖三层优先级 + maxTokens 截断                     |
+| `lib/routing/dispatch.ts`      | 集成测试：首选失败 → fallback 成功；全部失败 → 502            |
+| `lib/quota/handlers/*`         | mock 上游 fetch 验证归一化输出                                |
+| `lib/metrics/queryRouter.ts`   | 查询 API 覆盖 recentLogs / aggregateReport / apiKeyTokenUsage |
+| `lib/auth/apiKey.ts`           | 无 key / 无效 key / 已停用 key 三种用例                       |
 
 运行：
 
@@ -277,8 +287,6 @@ ADMIN_INIT_USERNAME=admin
 ADMIN_INIT_PASSWORD=changeme
 LOG_RETENTION_DAYS=30
 STAT_RETENTION_MONTHS=24
-QUOTA_REFRESH_INTERVAL_MS=60000
-METRICS_FLUSH_INTERVAL_MS=1000
 ```
 
 ---

@@ -27,15 +27,24 @@ import type { RoutingCandidate } from "@/lib/repositories/providerModelRepo";
 import { providerRepo } from "@/lib/repositories/providerRepo";
 import {
   incrementQuotaExhaustedRetry,
+  isQuotaRunningOut,
   markQuotaRunningOut,
   markTransientFailure,
   selectCandidates,
   type LoadBalanceMode,
 } from "@/lib/routing/selectCandidate";
-import { getStickyProvider, setStickyProvider } from "@/lib/routing/sticky";
+import {
+  clearStickyProvider,
+  getStickyProvider,
+  setStickyProvider,
+} from "@/lib/routing/sticky";
 import { resolveModelParams } from "@/lib/routing/resolveParams";
 import { activeRequests } from "@/lib/routing/activeRequests";
-import { env, getRuntimeSettingStringSync } from "@/lib/env";
+import {
+  env,
+  getRuntimeSettingStringSync,
+  getRuntimeSettingSync,
+} from "@/lib/env";
 import { userDimensionBuffer } from "@/lib/fee-pipeline/user-buffer";
 import { recordUsage } from "@/lib/fee-pipeline/record";
 import { updateLatestReports } from "@/lib/metrics/liveReportUpdater";
@@ -194,6 +203,38 @@ async function with429ProbeStream(
   throw last429!;
 }
 
+/**
+ * Retry non-429 retryable errors (5xx, network) on the same provider up to
+ * UPSTREAM_ERROR_RETRIES times before falling back to the next candidate.
+ * 429 errors are NOT retried here — that's with429Probe's job.
+ * Non-retryable errors are re-thrown immediately.
+ * Uses exponential backoff: 100ms, 200ms, 400ms, ...
+ */
+async function withUpstreamRetry<T>(fn: () => Promise<T>): Promise<T> {
+  const maxRetries = getRuntimeSettingSync("UPSTREAM_ERROR_RETRIES");
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      // Only retry non-429 retryable errors
+      if (err instanceof UpstreamError && err.status === 429) {
+        throw err; // 429 is handled by with429Probe
+      }
+      if (!isRetryable(err)) {
+        throw err; // Non-retryable — propagate immediately
+      }
+      lastErr = err;
+      if (attempt < maxRetries) {
+        // Exponential backoff: 100ms, 200ms, 400ms, ...
+        const delay = 100 * Math.pow(2, attempt);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 function emitMetrics(record: RequestLogRecord): void {
   try {
     metricsBuffer.push(record);
@@ -240,7 +281,8 @@ async function loadModel(modelId: string): Promise<ModelRow> {
  * both in-memory state and the DB (best-effort).
  */
 function trackQuotaExhaustedRetry(c: RoutingCandidate): void {
-  if ((c.usagePercent ?? 0) < env.QUOTA_EXHAUST_THRESHOLD) return;
+  if ((c.usagePercent ?? 0) < getRuntimeSettingSync("QUOTA_EXHAUST_THRESHOLD"))
+    return;
   const retries = incrementQuotaExhaustedRetry(c.provider.id);
   if (retries >= env.MAX_QUOTA_RETRIES) {
     markQuotaRunningOut(c.provider.id);
@@ -325,13 +367,29 @@ export async function dispatchChat(
     );
   }
 
-  // Apply sticky routing: move the last-used provider to the front.
+  // Apply sticky routing: move the last-used provider to the front,
+  // unless the sticky provider is quota-exhausted (in which case clear it).
   const sticky = await getStickyProvider(ctx.apiKeyId, modelId);
   if (sticky) {
-    const idx = sorted.findIndex((c) => c.provider.id === sticky.providerId);
-    if (idx > 0) {
-      const [stickyCandidate] = sorted.splice(idx, 1);
-      sorted.unshift(stickyCandidate);
+    const stickyCandidate = sorted.find(
+      (c) => c.provider.id === sticky.providerId,
+    );
+    if (
+      stickyCandidate &&
+      (stickyCandidate.provider.quotaRunningOut ||
+        isQuotaRunningOut(stickyCandidate.provider.id) ||
+        (stickyCandidate.usagePercent ?? 0) >=
+          getRuntimeSettingSync("QUOTA_EXHAUST_THRESHOLD"))
+    ) {
+      // Sticky provider is quota-exhausted — clear sticky so future requests
+      // aren't pinned to it, and let normal candidate ordering take over.
+      clearStickyProvider(ctx.apiKeyId, modelId).catch(() => {});
+    } else {
+      const idx = sorted.findIndex((c) => c.provider.id === sticky.providerId);
+      if (idx > 0) {
+        const [s] = sorted.splice(idx, 1);
+        sorted.unshift(s);
+      }
     }
   }
 
@@ -406,8 +464,14 @@ export async function dispatchChat(
       userAgent: ctx.userAgent,
     });
     try {
-      const resp = await with429Probe(c.provider.id, () =>
-        adapter.chat(resolveProvider(c.provider, apiModeOut), req, ctx.signal),
+      const resp = await withUpstreamRetry(() =>
+        with429Probe(c.provider.id, () =>
+          adapter.chat(
+            resolveProvider(c.provider, apiModeOut),
+            req,
+            ctx.signal,
+          ),
+        ),
       );
       // Translate response back to client's protocol if cross-protocol.
       if (isCrossProtocol) {
@@ -508,7 +572,7 @@ export async function dispatchChat(
         modelId,
         c.provider.id,
         c.pm.id,
-        env.STICKY_TTL_MS,
+        getRuntimeSettingSync("STICKY_TTL_MS"),
       ).catch(() => {});
       return { response: resp, provider: c.provider, pm: c.pm, params };
     } catch (err) {
@@ -546,6 +610,11 @@ export async function dispatchChat(
       });
       if (isRetryable(err)) {
         markTransientFailure(c.provider.id);
+        // On 429, clear sticky route so next request won't be pinned to
+        // the exhausted provider and will instead try other candidates.
+        if (err instanceof UpstreamError && err.status === 429) {
+          clearStickyProvider(ctx.apiKeyId, modelId).catch(() => {});
+        }
         continue;
       }
       // Non-retryable error: forward the original upstream error to the client.
@@ -616,13 +685,29 @@ export async function dispatchChatStream(
     );
   }
 
-  // Apply sticky routing: move the last-used provider to the front.
+  // Apply sticky routing: move the last-used provider to the front,
+  // unless the sticky provider is quota-exhausted (in which case clear it).
   const sticky = await getStickyProvider(ctx.apiKeyId, modelId);
   if (sticky) {
-    const idx = sorted.findIndex((c) => c.provider.id === sticky.providerId);
-    if (idx > 0) {
-      const [stickyCandidate] = sorted.splice(idx, 1);
-      sorted.unshift(stickyCandidate);
+    const stickyCandidate = sorted.find(
+      (c) => c.provider.id === sticky.providerId,
+    );
+    if (
+      stickyCandidate &&
+      (stickyCandidate.provider.quotaRunningOut ||
+        isQuotaRunningOut(stickyCandidate.provider.id) ||
+        (stickyCandidate.usagePercent ?? 0) >=
+          getRuntimeSettingSync("QUOTA_EXHAUST_THRESHOLD"))
+    ) {
+      // Sticky provider is quota-exhausted — clear sticky so future requests
+      // aren't pinned to it, and let normal candidate ordering take over.
+      clearStickyProvider(ctx.apiKeyId, modelId).catch(() => {});
+    } else {
+      const idx = sorted.findIndex((c) => c.provider.id === sticky.providerId);
+      if (idx > 0) {
+        const [s] = sorted.splice(idx, 1);
+        sorted.unshift(s);
+      }
     }
   }
 
@@ -702,12 +787,15 @@ export async function dispatchChatStream(
     try {
       // Peek first iteration with 429 probe: retry the same provider up to
       // RUNNING_OUT_PROBE_TIMES times before marking it Running out and
-      // falling back to the next candidate.
-      const peeked = await with429ProbeStream(c.provider.id, () =>
-        adapter.chatStream(
-          resolveProvider(c.provider, apiModeOut),
-          req,
-          ctx.signal,
+      // falling back to the next candidate. Wrap with upstream retry for
+      // non-429 retryable errors (5xx, network).
+      const peeked = await withUpstreamRetry(() =>
+        with429ProbeStream(c.provider.id, () =>
+          adapter.chatStream(
+            resolveProvider(c.provider, apiModeOut),
+            req,
+            ctx.signal,
+          ),
         ),
       );
       const wrapped = wrapStream(peeked, {
@@ -750,6 +838,11 @@ export async function dispatchChatStream(
       });
       if (isRetryable(err)) {
         markTransientFailure(c.provider.id);
+        // On 429, clear sticky route so next request won't be pinned to
+        // the exhausted provider and will instead try other candidates.
+        if (err instanceof UpstreamError && err.status === 429) {
+          clearStickyProvider(ctx.apiKeyId, modelId).catch(() => {});
+        }
         continue;
       }
       // Non-retryable error: forward the original upstream error to the client.
@@ -953,7 +1046,7 @@ function wrapStream(
             ctx.modelId,
             ctx.provider.id,
             ctx.pm.id,
-            env.STICKY_TTL_MS,
+            getRuntimeSettingSync("STICKY_TTL_MS"),
           ).catch(() => {});
         }
         // Touch finishReason to avoid "unused" lint complaint.
@@ -1028,8 +1121,10 @@ export async function dispatchDirectChat(
     userAgent: ctx.userAgent,
   });
   try {
-    const resp = await with429Probe(c.provider.id, () =>
-      adapter.chat(resolveProvider(c.provider, ctx.apiModeIn), req),
+    const resp = await withUpstreamRetry(() =>
+      with429Probe(c.provider.id, () =>
+        adapter.chat(resolveProvider(c.provider, ctx.apiModeIn), req),
+      ),
     );
     const latency = Date.now() - started;
     emitMetrics({
@@ -1216,11 +1311,13 @@ export async function dispatchDirectChatStream(
     userAgent: ctx.userAgent,
   });
   try {
-    const peeked = await with429ProbeStream(c.provider.id, () =>
-      adapter.chatStream(
-        resolveProvider(c.provider, ctx.apiModeIn),
-        req,
-        ctx.signal,
+    const peeked = await withUpstreamRetry(() =>
+      with429ProbeStream(c.provider.id, () =>
+        adapter.chatStream(
+          resolveProvider(c.provider, ctx.apiModeIn),
+          req,
+          ctx.signal,
+        ),
       ),
     );
     const wrapped = wrapStream(peeked, {

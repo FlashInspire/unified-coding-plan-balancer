@@ -26,6 +26,10 @@ export interface RecentLogRow {
   ip: string | null;
   completed: number;
   aborted: number;
+  /** Inbound protocol the client spoke (openai | anthropic). */
+  api_mode_in: string;
+  /** Outbound protocol sent to the upstream provider (openai | anthropic). */
+  api_mode_out: string;
 }
 
 /**
@@ -228,6 +232,8 @@ function mapRequestLogRow(r: {
   ip: string | null;
   completed: boolean;
   aborted: boolean;
+  apiModeIn: string;
+  apiModeOut: string;
 }): RecentLogRow {
   return {
     id: Number(r.id),
@@ -251,79 +257,9 @@ function mapRequestLogRow(r: {
     ip: r.ip,
     completed: r.completed ? 1 : 0,
     aborted: r.aborted ? 1 : 0,
+    api_mode_in: r.apiModeIn,
+    api_mode_out: r.apiModeOut,
   };
-}
-
-export interface UsageBucket {
-  minute: number;
-  api_key_id: string;
-  provider_id: string;
-  model_id: string;
-  requests: number;
-  requests_ok: number;
-  requests_err: number;
-  input_tokens: number;
-  cached_input_tokens: number;
-  output_tokens: number;
-  avg_ttft_ms: number | null;
-  avg_tps_out: number | null;
-}
-
-/** Aggregated usage in a given month. */
-export async function usageInMonth(
-  monthKey?: string,
-  apiKeyIds?: string[],
-): Promise<UsageBucket[]> {
-  // Compute minute range for the month key (YYYY-MM)
-  let startMinute: number;
-  let endMinute: number;
-
-  if (monthKey) {
-    const [y, m] = monthKey.split("-").map(Number);
-    const start = new Date(Date.UTC(y, m - 1, 1));
-    const end = new Date(Date.UTC(y, m, 1));
-    startMinute = Math.floor(start.getTime() / 60_000);
-    endMinute = Math.floor(end.getTime() / 60_000);
-  } else {
-    // Default: current month
-    const now = new Date();
-    const start = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
-    );
-    const end = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
-    );
-    startMinute = Math.floor(start.getTime() / 60_000);
-    endMinute = Math.floor(end.getTime() / 60_000);
-  }
-
-  const where: Record<string, unknown> = {
-    minute: { gte: startMinute, lt: endMinute },
-  };
-  if (apiKeyIds && apiKeyIds.length > 0) {
-    where.apiKeyId = { in: apiKeyIds };
-  }
-
-  const rows = await prisma.usageMinute.findMany({
-    where: where as never,
-    orderBy: { minute: "desc" },
-    take: 5000,
-  });
-
-  return rows.map((r) => ({
-    minute: r.minute,
-    api_key_id: r.apiKeyId,
-    provider_id: r.providerId,
-    model_id: r.modelId,
-    requests: r.requests,
-    requests_ok: r.requestsOk,
-    requests_err: r.requestsErr,
-    input_tokens: r.inputTokens,
-    cached_input_tokens: r.cachedInputTokens,
-    output_tokens: r.outputTokens,
-    avg_ttft_ms: r.ttftMsCount > 0 ? (r.ttftMsSum * 1.0) / r.ttftMsCount : null,
-    avg_tps_out: r.tpsOutCount > 0 ? (r.tpsOutSum * 1.0) / r.tpsOutCount : null,
-  }));
 }
 
 // ---------------------------------------------------------------------------

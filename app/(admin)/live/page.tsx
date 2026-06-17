@@ -8,7 +8,7 @@ import type { ModelRow } from "@/lib/types";
 import { apiFetch } from "../_components/api";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, XCircle, Radio } from "lucide-react";
+import { Loader2, XCircle, Radio, ArrowLeftRight } from "lucide-react";
 import { useT } from "../_components/i18n-provider";
 import { cn } from "@/lib/utils";
 import { RankBarChart } from "../_components/rank-bar-chart";
@@ -503,6 +503,37 @@ export default function LivePage() {
                 </div>
                 <div>
                   <span className="text-muted-foreground">
+                    {t("live.detail.protocolIn")}{" "}
+                  </span>
+                  <span className="font-mono">
+                    {String(r.api_mode_in ?? "—")}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">
+                    {t("live.detail.protocolOut")}{" "}
+                  </span>
+                  <span className="font-mono">
+                    {String(r.api_mode_out ?? "—")}
+                  </span>
+                </div>
+                {r.api_mode_in &&
+                r.api_mode_out &&
+                r.api_mode_in !== r.api_mode_out ? (
+                  <div>
+                    <Badge
+                      variant="secondary"
+                      className="text-[10px] gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                    >
+                      <ArrowLeftRight className="h-3 w-3" />
+                      {t("live.detail.translated")}
+                    </Badge>
+                  </div>
+                ) : (
+                  <div />
+                )}
+                <div>
+                  <span className="text-muted-foreground">
                     {t("live.detail.inTokens")}{" "}
                   </span>
                   {String(r.input_tokens ?? "")}
@@ -564,6 +595,15 @@ export default function LivePage() {
                 render: (r) => (
                   <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
                     {formatDate(Number(r.ts))}
+                    {r.api_mode_in &&
+                    r.api_mode_out &&
+                    r.api_mode_in !== r.api_mode_out ? (
+                      <span
+                        title={`Protocol translated: ${r.api_mode_in} → ${r.api_mode_out}`}
+                      >
+                        <ArrowLeftRight className="h-3.5 w-3.5 text-amber-600" />
+                      </span>
+                    ) : null}
                     {r.aborted ? (
                       <XCircle className="h-3.5 w-3.5 text-destructive" />
                     ) : !r.completed ? (

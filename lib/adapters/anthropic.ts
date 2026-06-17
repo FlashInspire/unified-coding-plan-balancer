@@ -209,6 +209,22 @@ export class AnthropicAdapter implements ProviderAdapter {
         inputTokens = evt.message.usage.input_tokens ?? 0;
         cachedRead = evt.message.usage.cache_read_input_tokens ?? 0;
         cacheWrite = evt.message.usage.cache_creation_input_tokens ?? 0;
+        // Yield an early usage-only chunk so downstream consumers (route
+        // handlers, dispatch wrapStream) can surface real input_tokens
+        // immediately rather than waiting for the terminal chunk. This is
+        // especially important for the Anthropic /v1/messages stream path,
+        // which needs input_tokens in the `message_start` event it emits to
+        // the client. output_tokens is 0 here; the final chunk carries the
+        // authoritative output count from `message_delta`.
+        yield {
+          delta: "",
+          usage: {
+            inputTokens,
+            cachedReadTokens: cachedRead,
+            cacheWriteTokens: cacheWrite,
+            outputTokens: 0,
+          },
+        };
       }
       if (evt.type === "content_block_start") {
         const blockIndex = evt.index ?? 0;

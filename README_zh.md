@@ -220,24 +220,21 @@ curl http://localhost:3000/v1/messages \
 
 ### 环境变量
 
-| 变量                        | 默认值                  | 说明                                       |
-| --------------------------- | ----------------------- | ------------------------------------------ |
-| `DATABASE_URL`              | —                       | SQLite 路径（`file:./data/config.sqlite`） |
-| `NEXTAUTH_SECRET`           | —                       | **必填。** Session 加密密钥                |
-| `NEXTAUTH_URL`              | `http://localhost:3000` | 公网 URL（用于 Auth 回调）                 |
-| `ADMIN_INIT_USERNAME`       | `admin`                 | 初始管理员用户名                           |
-| `ADMIN_INIT_PASSWORD`       | —                       | **必填。** 初始管理员密码                  |
-| `LOG_RETENTION_DAYS`        | `30`                    | 请求日志保留天数                           |
-| `STAT_RETENTION_MONTHS`     | `24`                    | 聚合统计数据保留月数                       |
-| `QUOTA_REFRESH_INTERVAL_MS` | `60000`                 | 配额刷新间隔（毫秒）                       |
-| `QUOTA_REFRESH_CONCURRENCY` | `4`                     | 配额刷新最大并发请求数                     |
-| `QUOTA_EXHAUST_THRESHOLD`   | `100`                   | 使用率超过此阈值的服务商将被跳过           |
-| `METRICS_FLUSH_INTERVAL_MS` | `1000`                  | 指标缓冲刷盘间隔（毫秒）                   |
-| `METRICS_FLUSH_BATCH_SIZE`  | `500`                   | 每次刷盘最大写入行数                       |
-| `METRICS_BUFFER_MAX`        | `5000`                  | 内存指标缓冲区最大容量                     |
-| `SQLITE_POOL_MAX`           | `16`                    | SQLite 连接池最大连接数                    |
-| `NEXTAUTH_URL_INTERNAL`     | —                       | 内部 Base URL（反向代理场景）              |
-| `DATA_DIR`                  | `./data`                | 数据目录路径                               |
+| 变量                       | 默认值                  | 说明                                       |
+| -------------------------- | ----------------------- | ------------------------------------------ |
+| `DATABASE_URL`             | —                       | SQLite 路径（`file:./data/config.sqlite`） |
+| `NEXTAUTH_SECRET`          | —                       | **必填。** Session 加密密钥                |
+| `NEXTAUTH_URL`             | `http://localhost:3000` | 公网 URL（用于 Auth 回调）                 |
+| `ADMIN_INIT_USERNAME`      | `admin`                 | 初始管理员用户名                           |
+| `ADMIN_INIT_PASSWORD`      | —                       | **必填。** 初始管理员密码                  |
+| `LOG_RETENTION_DAYS`       | `30`                    | 请求日志保留天数                           |
+| `STAT_RETENTION_MONTHS`    | `24`                    | 聚合统计数据保留月数                       |
+| `QUOTA_EXHAUST_THRESHOLD`  | `100`                   | 使用率超过此阈值的服务商将被跳过           |
+| `METRICS_FLUSH_BATCH_SIZE` | `500`                   | 每次刷盘最大写入行数                       |
+| `METRICS_BUFFER_MAX`       | `5000`                  | 内存指标缓冲区最大容量                     |
+| `SQLITE_POOL_MAX`          | `16`                    | SQLite 连接池最大连接数                    |
+| `NEXTAUTH_URL_INTERNAL`    | —                       | 内部 Base URL（反向代理场景）              |
+| `DATA_DIR`                 | `./data`                | 数据目录路径                               |
 
 ### 数据目录结构
 

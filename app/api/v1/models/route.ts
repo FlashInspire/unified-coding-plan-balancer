@@ -1,17 +1,28 @@
 /**
- * GET /v1/models — OpenAI-compatible model listing.
- * Returns deduplicated model ids as HFModelItem-compatible objects.
+ * GET /v1/models — model listing.
+ *
+ * Returns OpenAI-shaped response by default. If the client looks like an
+ * Anthropic SDK (sends `x-api-key` or `anthropic-version` header), returns
+ * Anthropic-shaped response per https://docs.anthropic.com/en/api/models-list.
  */
-import { extractBearer, verifyApiKey } from "@/lib/auth/apiKey";
+import { extractApiKey, verifyApiKey } from "@/lib/auth/apiKey";
 import { providerModelRepo } from "@/lib/repositories/providerModelRepo";
 import { modelRepo } from "@/lib/repositories/modelRepo";
 import { ensureBoot } from "@/lib/boot";
 
+function isAnthropicClient(req: Request): boolean {
+  return (
+    req.headers.get("x-api-key") != null ||
+    req.headers.get("anthropic-version") != null
+  );
+}
+
 export async function GET(req: Request): Promise<Response> {
   await ensureBoot();
-  const bearer = extractBearer(req);
-  if (!bearer) return jsonErr(401, "Missing Authorization header");
-  const key = await verifyApiKey(bearer);
+  // Accept both `Authorization: Bearer` (OpenAI) and `x-api-key` (Anthropic).
+  const apiKey = extractApiKey(req);
+  if (!apiKey) return jsonErr(401, "Missing Authorization header");
+  const key = await verifyApiKey(apiKey);
   if (!key) return jsonErr(401, "Invalid API key");
 
   const url = new URL(req.url);
@@ -24,6 +35,27 @@ export async function GET(req: Request): Promise<Response> {
   // Fetch full model rows
   const modelRows = await Promise.all(ids.map((id) => modelRepo.findById(id)));
 
+  if (isAnthropicClient(req)) {
+    // Anthropic shape: { data: [{ type, id, display_name, created_at }], has_more, first_id, last_id }
+    // created_at must be ISO 8601 — we don't track creation, so use epoch.
+    const epoch = new Date(0).toISOString();
+    const data = modelRows
+      .filter((m): m is NonNullable<typeof m> => m != null)
+      .map((m) => ({
+        type: "model" as const,
+        id: m.id,
+        display_name: m.displayName,
+        created_at: epoch,
+      }));
+    return Response.json({
+      data,
+      has_more: false,
+      first_id: data[0]?.id ?? null,
+      last_id: data[data.length - 1]?.id ?? null,
+    });
+  }
+
+  // OpenAI shape (default)
   const data = modelRows.map((m) => {
     const item: Record<string, unknown> = {
       id: m?.id ?? "unknown",

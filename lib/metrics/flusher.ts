@@ -2,7 +2,7 @@
  * Flushes the in-memory metrics buffer to the PostgreSQL request_log table.
  * All records go to a single table — no more sharding.
  */
-import { env } from "@/lib/env";
+import { getRuntimeSettingSync } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
 import { metricsBuffer, type RequestLogRecord } from "@/lib/metrics/buffer";
 
@@ -94,7 +94,9 @@ export async function logRequestUpdate(
  * Inserts and updates are separated since they need different Prisma calls.
  */
 export async function flushOnce(): Promise<number> {
-  const batch = metricsBuffer.drain(env.METRICS_FLUSH_BATCH_SIZE);
+  const batch = metricsBuffer.drain(
+    getRuntimeSettingSync("METRICS_FLUSH_BATCH_SIZE"),
+  );
   if (batch.length === 0) return 0;
 
   // Separate new inserts from completion updates.

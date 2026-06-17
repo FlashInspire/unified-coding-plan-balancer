@@ -19,8 +19,6 @@ const schema = z.object({
   LOG_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
   STAT_RETENTION_MONTHS: z.coerce.number().int().positive().default(24),
 
-  QUOTA_REFRESH_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
-  QUOTA_REFRESH_CONCURRENCY: z.coerce.number().int().positive().default(4),
   QUOTA_EXHAUST_THRESHOLD: z.coerce.number().min(0).max(100).default(100),
   MAX_QUOTA_RETRIES: z.coerce.number().int().positive().default(3),
   /** Number of times to probe a provider on 429 before marking it "Running out". */
@@ -31,12 +29,15 @@ const schema = z.object({
   /** Internal base URL used by the server to reach itself (e.g. http://localhost:3001) */
   NEXTAUTH_URL_INTERNAL: z.string().url().optional(),
 
-  METRICS_FLUSH_INTERVAL_MS: z.coerce.number().int().positive().default(1_000),
   METRICS_FLUSH_BATCH_SIZE: z.coerce.number().int().positive().default(500),
   METRICS_BUFFER_MAX: z.coerce.number().int().positive().default(5_000),
 
   /** Sticky routing TTL in milliseconds. Default 5 minutes. */
   STICKY_TTL_MS: z.coerce.number().int().positive().default(300_000),
+
+  /** Number of times to retry a non-429 retryable error (5xx, network) on the
+   *  same provider before falling back to the next candidate. Default 0. */
+  UPSTREAM_ERROR_RETRIES: z.coerce.number().int().min(0).default(0),
 
   /** Load-balance mode for provider selection. */
   LOAD_BALANCE_MODE: z
@@ -63,12 +64,10 @@ let runtimeLoaded = false;
 const RUNTIME_DEFAULTS: Record<string, number> = {
   LOG_RETENTION_DAYS: env.LOG_RETENTION_DAYS,
   STAT_RETENTION_MONTHS: env.STAT_RETENTION_MONTHS,
-  QUOTA_REFRESH_INTERVAL_MS: env.QUOTA_REFRESH_INTERVAL_MS,
-  QUOTA_REFRESH_CONCURRENCY: env.QUOTA_REFRESH_CONCURRENCY,
   QUOTA_EXHAUST_THRESHOLD: env.QUOTA_EXHAUST_THRESHOLD,
-  METRICS_FLUSH_INTERVAL_MS: env.METRICS_FLUSH_INTERVAL_MS,
   METRICS_FLUSH_BATCH_SIZE: env.METRICS_FLUSH_BATCH_SIZE,
   STICKY_TTL_MS: env.STICKY_TTL_MS,
+  UPSTREAM_ERROR_RETRIES: env.UPSTREAM_ERROR_RETRIES,
 };
 
 /** Default values for runtime-overridable string settings. */

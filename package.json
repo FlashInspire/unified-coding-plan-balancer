@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "bundle": "next build && cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static && cp -r prisma .next/standalone/prisma && tar -czf deploy.tgz -C .next/standalone . && echo 'Packed deploy.tgz'",
+    "bundle": "next build && cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static && cp -r prisma .next/standalone/prisma && tar -czf .next/standalone-build.tgz -C .next/standalone . && cat scripts/deploy-header.sh .next/standalone-build.tgz > deploy && chmod +x deploy && rm -f .next/standalone-build.tgz && echo 'Built executable: ./deploy'",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",

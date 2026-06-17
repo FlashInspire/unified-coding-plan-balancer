@@ -1,6 +1,6 @@
 import type { RoutingCandidate } from "@/lib/repositories/providerModelRepo";
 import type { LoadBalanceMode } from "@/lib/repositories/systemSettingRepo";
-import { env } from "@/lib/env";
+import { getRuntimeSettingSync } from "@/lib/env";
 
 // Re-export so callers can import from here without touching the repo module.
 export type { LoadBalanceMode };
@@ -85,7 +85,9 @@ function filterEligible(candidates: RoutingCandidate[]): RoutingCandidate[] {
     if (isQuotaRunningOut(c.provider.id) || c.provider.quotaRunningOut)
       return false;
     // If usage has recovered below threshold, clear retry counter
-    if ((c.usagePercent ?? 0) < env.QUOTA_EXHAUST_THRESHOLD) {
+    if (
+      (c.usagePercent ?? 0) < getRuntimeSettingSync("QUOTA_EXHAUST_THRESHOLD")
+    ) {
       resetQuotaRetries(c.provider.id);
     }
     return true;

@@ -111,7 +111,19 @@ export function buildAnthropicNonStreamResponse(args: {
 }
 
 /** Sequence of SSE events for streaming Anthropic. */
-export function buildAnthropicStreamStart(modelId: string) {
+export function buildAnthropicStreamStart(
+  modelId: string,
+  usage?: {
+    inputTokens?: number;
+    cachedReadTokens?: number;
+    cacheWriteTokens?: number;
+    outputTokens?: number;
+  },
+) {
+  const inputTokens = usage?.inputTokens ?? 0;
+  const cachedRead = usage?.cachedReadTokens ?? 0;
+  const cacheWrite = usage?.cacheWriteTokens ?? 0;
+  const outputTokens = usage?.outputTokens ?? 0;
   return [
     {
       event: "message_start",
@@ -125,7 +137,12 @@ export function buildAnthropicStreamStart(modelId: string) {
           content: [],
           stop_reason: null,
           stop_sequence: null,
-          usage: { input_tokens: 0, output_tokens: 0 },
+          usage: {
+            input_tokens: inputTokens,
+            cache_read_input_tokens: cachedRead,
+            cache_creation_input_tokens: cacheWrite,
+            output_tokens: outputTokens,
+          },
         },
       },
     },
@@ -195,6 +212,16 @@ export function buildAnthropicStreamEnd(args: {
   finishReason: string;
   outputTokens: number;
   openBlockIndices: number[];
+  /**
+   * Optional full token counts emitted in the `message_delta` usage block as a
+   * safety net for clients that only read final usage from `message_delta`.
+   * Anthropic's native API puts only `output_tokens` here, but extra fields
+   * don't break clients and ensure totals are available even when the route
+   * handler couldn't populate `message_start` with real input counts.
+   */
+  inputTokens?: number;
+  cachedReadTokens?: number;
+  cacheWriteTokens?: number;
 }) {
   return [
     ...args.openBlockIndices.map((i) => ({
@@ -206,7 +233,12 @@ export function buildAnthropicStreamEnd(args: {
       data: {
         type: "message_delta",
         delta: { stop_reason: args.finishReason, stop_sequence: null },
-        usage: { output_tokens: args.outputTokens },
+        usage: {
+          input_tokens: args.inputTokens ?? 0,
+          cache_read_input_tokens: args.cachedReadTokens ?? 0,
+          cache_creation_input_tokens: args.cacheWriteTokens ?? 0,
+          output_tokens: args.outputTokens,
+        },
       },
     },
     { event: "message_stop", data: { type: "message_stop" } },

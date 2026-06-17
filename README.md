@@ -94,7 +94,7 @@ Expose both **OpenAI** and **Anthropic** compatible endpoints simultaneously. Cl
 
 - **No external databases** required — everything in SQLite under `./data/`
 - Automatic schema migrations on startup
-- Background workers auto-start (quota refresher, metrics flusher, aggregator, archiver)
+- Periodic tasks (flush, archive, quota reset, report retirement) are driven by `GET /api/cron` (one task per file under `lib/cron/`)
 
 ### 📈 Admin Dashboard
 
@@ -220,24 +220,21 @@ Not overridable: `context_length`, `real_model_id`
 
 ### Environment Variables
 
-| Variable                    | Default                 | Description                               |
-| --------------------------- | ----------------------- | ----------------------------------------- |
-| `DATABASE_URL`              | —                       | SQLite path (`file:./data/config.sqlite`) |
-| `NEXTAUTH_SECRET`           | —                       | **Required.** Session encryption secret   |
-| `NEXTAUTH_URL`              | `http://localhost:3000` | Public URL for auth callbacks             |
-| `ADMIN_INIT_USERNAME`       | `admin`                 | Initial admin username                    |
-| `ADMIN_INIT_PASSWORD`       | —                       | **Required.** Initial admin password      |
-| `LOG_RETENTION_DAYS`        | `30`                    | Days to keep request logs                 |
-| `STAT_RETENTION_MONTHS`     | `24`                    | Months to keep aggregated stats           |
-| `QUOTA_REFRESH_INTERVAL_MS` | `60000`                 | Quota refresh interval (ms)               |
-| `QUOTA_REFRESH_CONCURRENCY` | `4`                     | Max concurrent quota refresh requests     |
-| `QUOTA_EXHAUST_THRESHOLD`   | `100`                   | Usage % above which provider is skipped   |
-| `METRICS_FLUSH_INTERVAL_MS` | `1000`                  | Metrics buffer flush interval (ms)        |
-| `METRICS_FLUSH_BATCH_SIZE`  | `500`                   | Max rows per flush batch                  |
-| `METRICS_BUFFER_MAX`        | `5000`                  | Max in-memory metrics buffer size         |
-| `SQLITE_POOL_MAX`           | `16`                    | Max SQLite connection pool size           |
-| `NEXTAUTH_URL_INTERNAL`     | —                       | Internal base URL (behind reverse proxy)  |
-| `DATA_DIR`                  | `./data`                | Data directory                            |
+| Variable                   | Default                 | Description                               |
+| -------------------------- | ----------------------- | ----------------------------------------- |
+| `DATABASE_URL`             | —                       | SQLite path (`file:./data/config.sqlite`) |
+| `NEXTAUTH_SECRET`          | —                       | **Required.** Session encryption secret   |
+| `NEXTAUTH_URL`             | `http://localhost:3000` | Public URL for auth callbacks             |
+| `ADMIN_INIT_USERNAME`      | `admin`                 | Initial admin username                    |
+| `ADMIN_INIT_PASSWORD`      | —                       | **Required.** Initial admin password      |
+| `LOG_RETENTION_DAYS`       | `30`                    | Days to keep request logs                 |
+| `STAT_RETENTION_MONTHS`    | `24`                    | Months to keep aggregated stats           |
+| `QUOTA_EXHAUST_THRESHOLD`  | `100`                   | Usage % above which provider is skipped   |
+| `METRICS_FLUSH_BATCH_SIZE` | `500`                   | Max rows per flush batch                  |
+| `METRICS_BUFFER_MAX`       | `5000`                  | Max in-memory metrics buffer size         |
+| `SQLITE_POOL_MAX`          | `16`                    | Max SQLite connection pool size           |
+| `NEXTAUTH_URL_INTERNAL`    | —                       | Internal base URL (behind reverse proxy)  |
+| `DATA_DIR`                 | `./data`                | Data directory                            |
 
 ### Data Layout
 
@@ -281,7 +278,8 @@ lib/
 ├── adapters/           # OpenAI & Anthropic protocol adapters + translation
 ├── routing/            # Parameter resolution, candidate selection, dispatch, active request tracking
 ├── quota/              # Usage percentage computation, quota reset scheduler
-├── metrics/            # Buffer, shard store, flusher, aggregator, query router
+├── metrics/            # Buffer, flusher, live report updater, query router
+├── cron/               # /api/cron task modules
 ├── repositories/       # Prisma data access layer
 ├── auth/               # NextAuth + API key auth + edge config
 └── workers/            # Background workers (quota, flush, aggregate, archive)

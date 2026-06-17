@@ -60,6 +60,19 @@ export function translateRequestExtraParams(
       translated.stop_sequences = translated.stop;
       delete translated.stop;
     }
+    // OpenAI tools [{type:"function",function:{name,description,parameters}}]
+    // → Anthropic tools [{name,description,input_schema}]
+    if (Array.isArray(translated.tools)) {
+      translated.tools = (translated.tools as unknown[]).map((t) =>
+        translateToolToAnthropic(t as Record<string, unknown>),
+      );
+    }
+    // OpenAI tool_choice → Anthropic tool_choice
+    if (translated.tool_choice != null) {
+      translated.tool_choice = translateToolChoiceToAnthropic(
+        translated.tool_choice as unknown,
+      );
+    }
     // Remove OpenAI-specific fields that Anthropic doesn't understand
     delete translated.frequency_penalty;
     delete translated.presence_penalty;
@@ -77,10 +90,22 @@ export function translateRequestExtraParams(
       translated.stop = translated.stop_sequences;
       delete translated.stop_sequences;
     }
+    // Anthropic tools [{name,description,input_schema}]
+    // → OpenAI tools [{type:"function",function:{name,description,parameters}}]
+    if (Array.isArray(translated.tools)) {
+      translated.tools = (translated.tools as unknown[]).map((t) =>
+        translateToolToOpenAI(t as Record<string, unknown>),
+      );
+    }
+    // Anthropic tool_choice → OpenAI tool_choice
+    if (translated.tool_choice != null) {
+      translated.tool_choice = translateToolChoiceToOpenAI(
+        translated.tool_choice as unknown,
+      );
+    }
     // Remove Anthropic-specific fields
     delete translated.thinking;
     delete translated.metadata;
-    delete translated.tool_choice; // keep if present — both protocols support it
   }
 
   return { ...req, extraParams: translated };
@@ -171,6 +196,9 @@ export async function* translateStream(
     }
   } else {
     // Upstream was OpenAI → client wants Anthropic SSE.
+    // message_start is emitted eagerly with zero usage; OpenAI upstreams
+    // typically report usage only on the terminal chunk, so real input
+    // tokens are surfaced in message_delta below as a safety net.
     yield {
       event: "message_start",
       data: buildAnthropicStreamStart(modelId)[0].data,
@@ -180,6 +208,9 @@ export async function* translateStream(
     let textBlockOpened = false;
     const toolCallToBlock = new Map<number, number>();
     const openBlockIndices: number[] = [];
+    let inputTokens = 0;
+    let cachedReadTokens = 0;
+    let cacheWriteTokens = 0;
     let outputTokens = 0;
     let finishReason = "end_turn";
 
@@ -232,7 +263,12 @@ export async function* translateStream(
         }
       }
 
-      if (chunk.usage) outputTokens = chunk.usage.outputTokens;
+      if (chunk.usage) {
+        inputTokens = chunk.usage.inputTokens ?? inputTokens;
+        cachedReadTokens = chunk.usage.cachedReadTokens ?? cachedReadTokens;
+        cacheWriteTokens = chunk.usage.cacheWriteTokens ?? cacheWriteTokens;
+        outputTokens = chunk.usage.outputTokens ?? outputTokens;
+      }
       if (chunk.finishReason) {
         finishReason =
           mapFinishReason(chunk.finishReason, "openai", "anthropic") ??
@@ -248,11 +284,16 @@ export async function* translateStream(
       };
     }
 
-    // message_delta + message_stop
+    // message_delta + message_stop. Full usage is emitted here as a safety net
+    // since OpenAI upstreams only report usage on the terminal chunk (so we
+    // couldn't populate message_start with real input_tokens).
     const endEvents = buildAnthropicStreamEnd({
       finishReason,
       outputTokens,
       openBlockIndices: [], // already closed above
+      inputTokens,
+      cachedReadTokens,
+      cacheWriteTokens,
     });
     for (const e of endEvents) {
       yield { event: e.event, data: e.data };
@@ -282,4 +323,104 @@ function mapFinishReason(
   if (reason === "length") return "max_tokens";
   if (reason === "tool_calls") return "tool_use";
   return reason;
+}
+
+// ---------------------------------------------------------------------------
+// Tool translation helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * OpenAI tool: { type:"function", function:{ name, description, parameters } }
+ * Anthropic tool: { name, description, input_schema }
+ */
+function translateToolToAnthropic(
+  tool: Record<string, unknown>,
+): Record<string, unknown> {
+  // Already Anthropic-shaped (idempotent guard).
+  if (typeof tool.name === "string" && tool.input_schema != null) {
+    return tool;
+  }
+  const fn = (tool.function as Record<string, unknown> | undefined) ?? {};
+  const out: Record<string, unknown> = {
+    name: fn.name ?? tool.name,
+  };
+  if (fn.description != null) out.description = fn.description;
+  else if (tool.description != null) out.description = tool.description;
+  // OpenAI stores JSON schema in `parameters`; Anthropic uses `input_schema`.
+  const schema =
+    (fn.parameters as Record<string, unknown> | undefined) ??
+    (tool.input_schema as Record<string, unknown> | undefined);
+  out.input_schema = schema ?? { type: "object", properties: {} };
+  return out;
+}
+
+function translateToolToOpenAI(
+  tool: Record<string, unknown>,
+): Record<string, unknown> {
+  // Already OpenAI-shaped (idempotent guard).
+  if (tool.type === "function" && tool.function != null) {
+    return tool;
+  }
+  const fn: Record<string, unknown> = {
+    name: tool.name,
+  };
+  if (tool.description != null) fn.description = tool.description;
+  // Anthropic stores JSON schema in `input_schema`; OpenAI uses `parameters`.
+  fn.parameters = (tool.input_schema as Record<string, unknown> | undefined) ??
+    (tool.parameters as Record<string, unknown> | undefined) ?? {
+      type: "object",
+      properties: {},
+    };
+  return { type: "function", function: fn };
+}
+
+/**
+ * OpenAI tool_choice:
+ *   "auto" | "none" | "required" | "tool" | { type:"function", function:{ name } }
+ * Anthropic tool_choice:
+ *   { type:"auto"|"any"|"tool", name? }
+ */
+function translateToolChoiceToAnthropic(
+  choice: unknown,
+): Record<string, unknown> {
+  if (typeof choice === "string") {
+    if (choice === "auto") return { type: "auto" };
+    if (choice === "none") return { type: "auto" }; // Anthropic has no "none"
+    if (choice === "required") return { type: "any" };
+    if (choice === "tool") return { type: "any" };
+    return { type: "auto" };
+  }
+  if (choice && typeof choice === "object") {
+    const c = choice as Record<string, unknown>;
+    // Already Anthropic-shaped.
+    if (typeof c.type === "string" && c.type !== "function") return c;
+    // OpenAI object: { type:"function", function:{ name } }
+    if (c.type === "function") {
+      const fn = (c.function as Record<string, unknown> | undefined) ?? {};
+      return { type: "tool", name: fn.name };
+    }
+    // Fallback: object without type — treat as auto.
+  }
+  return { type: "auto" };
+}
+
+function translateToolChoiceToOpenAI(choice: unknown): unknown {
+  if (typeof choice === "string") {
+    // Anthropic clients rarely send a bare string, but pass through the
+    // shared values ("auto"/"none"). "any"/"tool" map to "required".
+    if (choice === "auto" || choice === "none") return choice;
+    return "required";
+  }
+  if (choice && typeof choice === "object") {
+    const c = choice as Record<string, unknown>;
+    // Already OpenAI-shaped.
+    if (c.type === "function" && c.function != null) return c;
+    const type = c.type as string | undefined;
+    if (type === "auto") return "auto";
+    if (type === "any") return "required";
+    if (type === "tool" && typeof c.name === "string") {
+      return { type: "function", function: { name: c.name } };
+    }
+  }
+  return "auto";
 }
